@@ -23,12 +23,25 @@ class Command(BaseCommand):
             action="store_true",
             help="Delete existing songs before loading",
         )
+        parser.add_argument(
+            "--if-empty",
+            action="store_true",
+            help="Skip seeding when the songs table already has rows",
+        )
 
     def handle(self, *args, **options):
         if not CSV_PATH.exists():
             self.stderr.write(
                 self.style.ERROR(
                     f"Missing {CSV_PATH}. Run: python ../scripts/build_platinum_catalog.py"
+                )
+            )
+            return
+
+        if options["if_empty"] and Song.objects.exists():
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"Songs already present ({Song.objects.count()}). Skipping seed."
                 )
             )
             return

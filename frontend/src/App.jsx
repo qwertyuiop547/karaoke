@@ -73,9 +73,11 @@ export default function App() {
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
+  const [waking, setWaking] = useState(false)
+  const [reloadToken, setReloadToken] = useState(0)
   const [error, setError] = useState('')
   const [usingOffline, setUsingOffline] = useState(false)
-  const { online } = useConnectivity()
+  const { online } = useConnectivity({ intervalMs: 45000 })
   const prevOnlineRef = useRef(online)
 
   const [favorites, setFavorites] = useState(() => getFavorites())
@@ -110,6 +112,11 @@ export default function App() {
   const prefersReducedMotion =
     typeof window !== 'undefined' &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  // Skip GSAP on phones — transform/stagger animations stutter on mid-range Android.
+  const skipMotion =
+    prefersReducedMotion ||
+    (typeof window !== 'undefined' &&
+      window.matchMedia('(pointer: coarse), (max-width: 820px)').matches)
 
   const debouncedQuery = useDebouncedValue(query)
 
@@ -173,7 +180,7 @@ export default function App() {
         { clearProps: 'all', opacity: 1, y: 0, scale: 1 },
       )
 
-      if (prefersReducedMotion) return
+      if (skipMotion) return
 
       const tl = gsap.timeline({
         defaults: { ease: 'power3.out' },
@@ -252,13 +259,13 @@ export default function App() {
         )
       }
     },
-    { scope: containerRef, dependencies: [showAdminLogin, prefersReducedMotion] },
+    { scope: containerRef, dependencies: [showAdminLogin, skipMotion] },
   )
 
   // Song rows animate when the page/results change
   useGSAP(
     () => {
-      if (showAdminLogin || prefersReducedMotion || loading || !songs.length) return
+      if (showAdminLogin || skipMotion || loading || !songs.length) return
 
       const rows = listRef.current?.querySelectorAll('.songbook-row')
       if (!rows?.length) return
@@ -279,7 +286,7 @@ export default function App() {
     },
     {
       scope: listRef,
-      dependencies: [songs, loading, page, showAdminLogin, prefersReducedMotion],
+      dependencies: [songs, loading, page, showAdminLogin, skipMotion],
     },
   )
 
@@ -360,6 +367,7 @@ export default function App() {
 
     async function load() {
       setLoading(true)
+      setWaking(false)
       setError('')
       try {
         let data
@@ -379,8 +387,10 @@ export default function App() {
               category: selectedCategory,
               page,
               pageSize: PAGE_SIZE,
+              onRetry: () => setWaking(true),
             })
             setUsingOffline(false)
+            setWaking(false)
           } catch (err) {
             if (err.name === 'AbortError') return
             const meta = getOfflineMeta()
@@ -392,6 +402,7 @@ export default function App() {
                 pageSize: PAGE_SIZE,
               })
               setUsingOffline(true)
+              setWaking(false)
               showToast('Offline mode: using your saved catalog.')
             } else {
               throw err
@@ -404,7 +415,12 @@ export default function App() {
         setTotal(data.count ?? rawList.length)
       } catch (err) {
         if (err.name === 'AbortError') return
-        setError(err.message || 'Could not load the songbook.')
+        setWaking(false)
+        setError(
+          err.message?.includes('waking') || err.name === 'AbortError'
+            ? 'Server is waking up (free plan). Tap retry in a few seconds.'
+            : err.message || 'Could not load the songbook.',
+        )
         setSongs([])
         setTotal(0)
       } finally {
@@ -414,7 +430,7 @@ export default function App() {
 
     load()
     return () => controller.abort()
-  }, [filterKey, debouncedQuery, selectedLetter, selectedCategory, page, online])
+  }, [filterKey, debouncedQuery, selectedLetter, selectedCategory, page, online, reloadToken])
 
   const goToPage = (nextPage) => {
     const clamped = Math.min(Math.max(1, nextPage), totalPages)
@@ -791,14 +807,32 @@ export default function App() {
 
           <div className="directory-status">
             <span className="status-text">
-              {loading
-                ? 'Searching the catalog…'
-                : `${usingOffline ? 'Offline catalog' : 'Songbook'}: ${total.toLocaleString()} songs · ${rangeStart}–${rangeEnd} · Page ${total ? page : 0} of ${total ? totalPages : 0}`}
+              {waking
+                ? 'Waking free server… first open can take up to a minute.'
+                : loading
+                  ? 'Searching the catalog…'
+                  : `${usingOffline ? 'Offline catalog' : 'Songbook'}: ${total.toLocaleString()} songs · ${rangeStart}–${rangeEnd} · Page ${total ? page : 0} of ${total ? totalPages : 0}`}
             </span>
           </div>
 
           <main className="songbook-list" ref={listRef}>
-            {error ? <div className="songbook-message error">{error}</div> : null}
+            {error ? (
+              <div className="songbook-message error">
+                <p>{error}</p>
+                <button
+                  type="button"
+                  className="toolbar-btn"
+                  style={{ marginTop: '0.75rem' }}
+                  onClick={() => {
+                    setError('')
+                    setWaking(false)
+                    setReloadToken((n) => n + 1)
+                  }}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : null}
 
             {!loading && !error && songs.length === 0 ? (
               <div className="songbook-message empty">

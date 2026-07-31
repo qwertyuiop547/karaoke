@@ -26,6 +26,8 @@ services:
       - key: DATABASE_SSL_REQUIRE
         value: "true"
       - key: WEB_CONCURRENCY
+        value: "1"
+      - key: WEB_THREADS
         value: "2"
       - key: DATABASE_URL
         fromDatabase:

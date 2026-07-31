@@ -210,9 +210,55 @@ export async function changeAdminPassword({
   return response.json()
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+/**
+ * Free Render services sleep after idle. Retry with longer timeouts so the
+ * first phone open can wait out a cold start instead of failing instantly.
+ */
+export async function fetchWithWake(url, options = {}, { retries = 5, onRetry } = {}) {
+  let lastError
+  for (let attempt = 0; attempt < retries; attempt += 1) {
+    if (options.signal?.aborted) {
+      const err = new Error('Aborted')
+      err.name = 'AbortError'
+      throw err
+    }
+    const timeoutMs = attempt === 0 ? 12000 : 45000
+    const controller = new AbortController()
+    const onAbort = () => controller.abort()
+    options.signal?.addEventListener('abort', onAbort, { once: true })
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      })
+      if (response.ok || (response.status >= 400 && response.status < 500)) {
+        return response
+      }
+      lastError = new Error(`Server returned ${response.status}`)
+    } catch (err) {
+      if (err?.name === 'AbortError' && options.signal?.aborted) throw err
+      lastError = err
+    } finally {
+      window.clearTimeout(timer)
+      options.signal?.removeEventListener('abort', onAbort)
+    }
+
+    if (attempt < retries - 1) {
+      onRetry?.(attempt + 1, retries)
+      await sleep(1500 + attempt * 2000)
+    }
+  }
+  throw lastError || new Error('Server is waking up. Please try again.')
+}
+
 export async function searchSongs(
   query,
-  { signal, letter = 'ALL', category = 'ALL', page = 1, pageSize = 10 } = {},
+  { signal, letter = 'ALL', category = 'ALL', page = 1, pageSize = 10, onRetry } = {},
 ) {
   const params = new URLSearchParams()
   if (query.trim()) {
@@ -227,10 +273,14 @@ export async function searchSongs(
   params.set('page', String(page))
   params.set('page_size', String(pageSize))
 
-  const response = await fetch(`${API_BASE}/songs/?${params.toString()}`, {
-    signal,
-    credentials: 'include',
-  })
+  const response = await fetchWithWake(
+    `${API_BASE}/songs/?${params.toString()}`,
+    {
+      signal,
+      credentials: 'include',
+    },
+    { onRetry },
+  )
 
   if (!response.ok) {
     throw new Error('Could not load the Official Platinum songbook.')

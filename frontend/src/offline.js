@@ -3,6 +3,9 @@ const STORE = 'songs'
 const META_KEY = 'platino_offline_meta'
 const BATCH_SIZE = 400
 
+/** In-memory cache so mobile search doesn't getAll() from IndexedDB every keystroke. */
+let catalogCache = null
+
 function openDb() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, 1)
@@ -111,23 +114,29 @@ export async function saveOfflineCatalog(songs) {
     savedAt: new Date().toISOString(),
   }
   localStorage.setItem(META_KEY, JSON.stringify(meta))
+  catalogCache = normalized
   return meta
+}
+
+async function loadCatalogCached() {
+  if (Array.isArray(catalogCache)) return catalogCache
+  const db = await openDb()
+  try {
+    const tx = db.transaction(STORE, 'readonly')
+    const store = tx.objectStore(STORE)
+    catalogCache = (await requestToPromise(store.getAll())) || []
+    await txDone(tx)
+  } finally {
+    db.close()
+  }
+  return catalogCache
 }
 
 export async function searchOfflineCatalog(
   query,
   { letter = 'ALL', category = 'ALL', page = 1, pageSize = 10 } = {},
 ) {
-  const db = await openDb()
-  let all = []
-  try {
-    const tx = db.transaction(STORE, 'readonly')
-    const store = tx.objectStore(STORE)
-    all = (await requestToPromise(store.getAll())) || []
-    await txDone(tx)
-  } finally {
-    db.close()
-  }
+  const all = await loadCatalogCached()
 
   const q = query.trim().toLowerCase()
   let filtered = all

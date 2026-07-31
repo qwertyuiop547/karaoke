@@ -4348,6 +4348,24 @@
   }
 }
 
+@media (max-width: 820px), (pointer: coarse) {
+  .songbook-page {
+    background-image: none;
+    box-shadow: none;
+  }
+
+  .songbook-row,
+  .toolbar-btn,
+  .cat-pill,
+  .alphabet-btn {
+    transition: none !important;
+  }
+
+  .songbook-binder {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+}
+
 @media print {
   body.printing-join-poster * {
     visibility: hidden !important;
