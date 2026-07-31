@@ -1,0 +1,25 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<div style="max-width:720px">
+  <h1>Upload Songs CSV</h1>
+  <p>
+    Mag-upload ng CSV para magdagdag o mag-update ng Platinum songs.
+  </p>
+  <p><strong>Required headers:</strong></p>
+  <pre style="background:#111;color:#eee;padding:12px;border-radius:8px">platinum_number,title,artist,language,genre</pre>
+  <p>Example:</p>
+  <pre style="background:#111;color:#eee;padding:12px;border-radius:8px">1134,With A Smile,Eraserheads,Filipino,OPM
+7704,Noypi,Bamboo,Filipino,OPM</pre>
+
+  <form method="post" enctype="multipart/form-data" style="margin-top:1.5rem">
+    {% csrf_token %}
+    <input type="file" name="csv_file" accept=".csv,text/csv" required>
+    <div style="margin-top:1rem">
+      <button type="submit" class="default">Upload CSV</button>
+      <a href="{% url 'admin:songs_song_changelist' %}" style="margin-left:1rem">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

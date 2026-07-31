@@ -1,0 +1,59 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: karaoke-db
+    environment:
+      POSTGRES_DB: karaoke
+      POSTGRES_USER: karaoke
+      POSTGRES_PASSWORD: karaoke
+    ports:
+      - "5433:5432"
+    volumes:
+      - karaoke_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U karaoke -d karaoke"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: karaoke-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  web:
+    build:
+      context: ./backend
+    container_name: karaoke-web
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: "8000"
+      WEB_CONCURRENCY: "4"
+      USE_SQLITE: "false"
+      DJANGO_DEBUG: "true"
+      DJANGO_SECRET_KEY: "django-insecure-compose-dev-only"
+      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,web"
+      POSTGRES_DB: karaoke
+      POSTGRES_USER: karaoke
+      POSTGRES_PASSWORD: karaoke
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      REDIS_URL: redis://redis:6379/0
+      CONN_MAX_AGE: "60"
+      CORS_ALLOWED_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173"
+      CSRF_TRUSTED_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  karaoke_pgdata:

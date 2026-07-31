@@ -1,0 +1,51 @@
+# Platinum Karaoke Songbook — Render Blueprint
+# https://dashboard.render.com/blueprint/new?repo=https://github.com/qwertyuiop547/karaoke
+
+databases:
+  - name: karaoke-db
+    plan: free
+    databaseName: karaoke
+    user: karaoke
+
+services:
+  - type: web
+    name: karaoke
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/auth/csrf/
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.0"
+      - key: USE_SQLITE
+        value: "false"
+      - key: DJANGO_DEBUG
+        value: "false"
+      - key: DATABASE_SSL_REQUIRE
+        value: "true"
+      - key: WEB_CONCURRENCY
+        value: "2"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: karaoke-db
+          property: connectionString
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_ALLOWED_HOSTS
+        value: ".onrender.com"
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_ID
+        sync: false

@@ -1,0 +1,101 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<div style="max-width:860px">
+  <h1>Resolve Song Report #{{ report.id }}</h1>
+
+  <div style="background:#fff3cd;border:1px solid #ffe69c;padding:12px 14px;border-radius:8px;margin:12px 0;">
+    <strong>User report</strong><br>
+    Reported number: <code>{{ report.platinum_number }}</code><br>
+    Title: {{ report.title|default:"—" }}<br>
+    Artist: {{ report.artist|default:"—" }}<br>
+    Suggested number: <code>{{ report.suggested_number|default:"(none)" }}</code><br>
+    Note: {{ report.note }}
+  </div>
+
+  {% if song %}
+  <div style="background:#e8f5e9;border:1px solid #a5d6a7;padding:12px 14px;border-radius:8px;margin:12px 0;">
+    <strong>Current song in database</strong><br>
+    {{ song.platinum_number }} — {{ song.title }} ({{ song.artist }})
+  </div>
+  {% else %}
+  <div style="background:#fdecea;border:1px solid #f5c2c7;padding:12px 14px;border-radius:8px;margin:12px 0;">
+    <strong>Walang linked song</strong> — baka na-delete na. Pwede mo pa ring i-Add ang tamang entry.
+  </div>
+  {% endif %}
+
+  <form method="post" style="margin-top:1.25rem">
+    {% csrf_token %}
+
+    <fieldset style="border:1px solid #ddd;padding:14px;border-radius:8px;margin-bottom:1rem">
+      <legend><strong>Correct song details</strong></legend>
+      <p>
+        <label>Correct Platinum number<br>
+          <input type="text" name="correct_number" value="{{ default_number }}" style="width:100%;max-width:280px">
+        </label>
+      </p>
+      <p>
+        <label>Title<br>
+          <input type="text" name="title" value="{{ default_title }}" style="width:100%">
+        </label>
+      </p>
+      <p>
+        <label>Artist<br>
+          <input type="text" name="artist" value="{{ default_artist }}" style="width:100%">
+        </label>
+      </p>
+      <p style="display:flex;gap:12px;flex-wrap:wrap">
+        <label>Language<br>
+          <input type="text" name="language" value="{{ default_language }}" style="width:180px">
+        </label>
+        <label>Genre<br>
+          <input type="text" name="genre" value="{{ default_genre }}" style="width:180px">
+        </label>
+      </p>
+      <p>
+        <label>Admin notes<br>
+          <textarea name="admin_notes" rows="3" style="width:100%">{{ report.admin_notes }}</textarea>
+        </label>
+      </p>
+    </fieldset>
+
+    <div style="display:grid;gap:10px;max-width:640px">
+      <button type="submit" name="action" value="update_number" class="default"
+        {% if not song %}disabled{% endif %}>
+        1) Update number of current song (keep same entry)
+      </button>
+
+      <button type="submit" name="action" value="delete_and_add" class="default"
+        style="background:#c0392b;border-color:#a93226">
+        2) Delete wrong song + Add/Update correct song
+      </button>
+
+      <button type="submit" name="action" value="add_correct" class="default"
+        style="background:#1e8449;border-color:#196f3d">
+        3) Add/Update correct song only (huwag i-delete ang luma)
+      </button>
+
+      <button type="submit" name="action" value="delete_wrong"
+        {% if not song %}disabled{% endif %}>
+        4) Delete wrong song only
+      </button>
+
+      <button type="submit" name="action" value="reviewed">
+        5) Mark as Reviewed (walang edit muna)
+      </button>
+
+      <button type="submit" name="action" value="reject">
+        6) Reject report
+      </button>
+    </div>
+  </form>
+
+  <p style="margin-top:1.5rem">
+    <a href="{% url 'admin:songs_songreport_changelist' %}">← Back to reports</a>
+    &nbsp;|&nbsp;
+    <a href="{% url 'admin:songs_song_changelist' %}">Songs list</a>
+    &nbsp;|&nbsp;
+    <a href="{% url 'admin:songs_song_add' %}">Add song manually</a>
+  </p>
+</div>
+{% endblock %}

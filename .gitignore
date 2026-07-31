@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.sqlite3
+.env
+.DS_Store
+backend/staticfiles/
+backend/frontend_dist/
+frontend/dist/
+frontend/node_modules/
+*.log
+data_pdfs/
+vol59.pdf
+vol59_sample.txt
+*.pdf
+.cursor/
+agent-transcripts/
