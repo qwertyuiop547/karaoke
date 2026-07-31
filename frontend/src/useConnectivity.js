@@ -1,21 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { isOnline as readNavigatorOnline } from './offline'
 
-const DEFAULT_PROBE = `${import.meta.env.VITE_API_URL || '/api'}/auth/csrf/`
+/** Lightweight endpoint — no CSRF cookie work, no DB. */
+const DEFAULT_PROBE = `${import.meta.env.VITE_API_URL || '/api'}/health/`
 
 /**
- * Reliable online/offline for installed PWAs.
- * navigator.onLine alone is flaky on mobile — we also probe the network
- * on mount, when the app resumes, and on a short interval.
+ * Online/offline for PWAs.
+ * Wi‑Fi can be up while the API is slow — do NOT flip to Offline on a single
+ * failed probe (that was marking phones "offline" with Wi‑Fi still on).
  */
 export function useConnectivity({
   probeUrl = DEFAULT_PROBE,
-  intervalMs = 20000,
-  timeoutMs = 4000,
+  intervalMs = 60000,
+  timeoutMs = 10000,
+  failThreshold = 3,
 } = {}) {
   const [online, setOnline] = useState(() => readNavigatorOnline())
   const onlineRef = useRef(online)
   const probingRef = useRef(false)
+  const failStreakRef = useRef(0)
 
   useEffect(() => {
     onlineRef.current = online
@@ -25,7 +28,9 @@ export function useConnectivity({
     if (probingRef.current) return onlineRef.current
     probingRef.current = true
     try {
+      // Device says no network at all.
       if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        failStreakRef.current = failThreshold
         if (onlineRef.current) setOnline(false)
         return false
       }
@@ -37,29 +42,43 @@ export function useConnectivity({
         const response = await fetch(url, {
           method: 'GET',
           cache: 'no-store',
-          credentials: 'include',
+          credentials: 'omit',
           signal: controller.signal,
         })
-        // Any reachable server response means we have a network path.
-        const ok = response.status > 0
-        if (onlineRef.current !== ok) setOnline(ok)
-        return ok
+        if (response.status > 0) {
+          failStreakRef.current = 0
+          if (!onlineRef.current) setOnline(true)
+          return true
+        }
+        failStreakRef.current += 1
       } catch {
-        if (onlineRef.current) setOnline(false)
-        return false
+        // Slow/unreachable API ≠ no Wi‑Fi. Require a streak before Offline UI.
+        failStreakRef.current += 1
       } finally {
         window.clearTimeout(timer)
       }
+
+      if (failStreakRef.current >= failThreshold) {
+        if (onlineRef.current) setOnline(false)
+        return false
+      }
+      // Keep treating as online while Wi‑Fi is up and streak is below threshold.
+      return onlineRef.current
     } finally {
       probingRef.current = false
     }
-  }, [probeUrl, timeoutMs])
+  }, [probeUrl, timeoutMs, failThreshold])
 
   useEffect(() => {
     probe()
 
-    const goOffline = () => setOnline(false)
+    const goOffline = () => {
+      failStreakRef.current = failThreshold
+      setOnline(false)
+    }
     const goOnline = () => {
+      failStreakRef.current = 0
+      setOnline(true)
       probe()
     }
     const onVisibility = () => {
@@ -71,7 +90,7 @@ export function useConnectivity({
     window.addEventListener('focus', goOnline)
     document.addEventListener('visibilitychange', onVisibility)
 
-    const interval = window.setInterval(probe, Math.max(8000, intervalMs))
+    const interval = window.setInterval(probe, Math.max(30000, intervalMs))
 
     return () => {
       window.removeEventListener('offline', goOffline)
@@ -80,7 +99,7 @@ export function useConnectivity({
       document.removeEventListener('visibilitychange', onVisibility)
       window.clearInterval(interval)
     }
-  }, [probe, intervalMs])
+  }, [probe, intervalMs, failThreshold])
 
   return { online, checkConnectivity: probe }
 }

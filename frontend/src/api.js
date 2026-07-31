@@ -28,19 +28,69 @@ async function parseError(response, fallback) {
   return fallback
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+/**
+ * Retry slow first requests (cold start / brief network blips).
+ */
+export async function fetchWithWake(url, options = {}, { retries = 5, onRetry } = {}) {
+  let lastError
+  for (let attempt = 0; attempt < retries; attempt += 1) {
+    if (options.signal?.aborted) {
+      const err = new Error('Aborted')
+      err.name = 'AbortError'
+      throw err
+    }
+    const timeoutMs = attempt === 0 ? 15000 : 30000
+    const controller = new AbortController()
+    const onAbort = () => controller.abort()
+    options.signal?.addEventListener('abort', onAbort, { once: true })
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      })
+      if (response.ok || (response.status >= 400 && response.status < 500)) {
+        return response
+      }
+      lastError = new Error(`Server returned ${response.status}`)
+    } catch (err) {
+      if (err?.name === 'AbortError' && options.signal?.aborted) throw err
+      lastError = err
+    } finally {
+      window.clearTimeout(timer)
+      options.signal?.removeEventListener('abort', onAbort)
+    }
+
+    if (attempt < retries - 1) {
+      onRetry?.(attempt + 1, retries)
+      await sleep(800 + attempt * 1200)
+    }
+  }
+  throw lastError || new Error('Server is waking up. Please try again.')
+}
+
 export async function fetchCsrf() {
   if (!csrfPromise) {
-    csrfPromise = fetch(`${API_BASE}/auth/csrf/`, {
-      credentials: 'include',
-    })
+    csrfPromise = fetchWithWake(
+      `${API_BASE}/auth/csrf/`,
+      { credentials: 'include' },
+      { retries: 3 },
+    )
       .then(async (response) => {
         if (!response.ok) {
           throw new Error('Could not initialize login security token.')
         }
         return response.json()
       })
+      .catch((err) => {
+        csrfPromise = null
+        throw err
+      })
       .finally(() => {
-        // Allow refresh later if cookie was cleared
         window.setTimeout(() => {
           csrfPromise = null
         }, 5 * 60 * 1000)
@@ -51,12 +101,16 @@ export async function fetchCsrf() {
 
 export async function adminLogin(username, password) {
   const headers = await csrfHeaders({ 'Content-Type': 'application/json' })
-  const response = await fetch(`${API_BASE}/auth/login/`, {
-    method: 'POST',
-    credentials: 'include',
-    headers,
-    body: JSON.stringify({ username, password }),
-  })
+  const response = await fetchWithWake(
+    `${API_BASE}/auth/login/`,
+    {
+      method: 'POST',
+      credentials: 'include',
+      headers,
+      body: JSON.stringify({ username, password }),
+    },
+    { retries: 3 },
+  )
   const data = await response.json().catch(() => ({}))
   if (!response.ok) {
     throw new Error(data.detail || 'Invalid admin credentials.')
@@ -109,12 +163,16 @@ export async function subscriberRegister({ email, password, confirmPassword }) {
 
 export async function subscriberLogin(email, password) {
   const headers = await csrfHeaders({ 'Content-Type': 'application/json' })
-  const response = await fetch(`${API_BASE}/auth/subscriber-login/`, {
-    method: 'POST',
-    credentials: 'include',
-    headers,
-    body: JSON.stringify({ email, password }),
-  })
+  const response = await fetchWithWake(
+    `${API_BASE}/auth/subscriber-login/`,
+    {
+      method: 'POST',
+      credentials: 'include',
+      headers,
+      body: JSON.stringify({ email, password }),
+    },
+    { retries: 3 },
+  )
   const data = await response.json().catch(() => ({}))
   if (!response.ok) {
     throw new Error(data.detail || 'Invalid email or password.')
@@ -208,52 +266,6 @@ export async function changeAdminPassword({
     throw new Error(await parseError(response, 'Could not change password.'))
   }
   return response.json()
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms))
-}
-
-/**
- * Free Render services sleep after idle. Retry with longer timeouts so the
- * first phone open can wait out a cold start instead of failing instantly.
- */
-export async function fetchWithWake(url, options = {}, { retries = 5, onRetry } = {}) {
-  let lastError
-  for (let attempt = 0; attempt < retries; attempt += 1) {
-    if (options.signal?.aborted) {
-      const err = new Error('Aborted')
-      err.name = 'AbortError'
-      throw err
-    }
-    const timeoutMs = attempt === 0 ? 12000 : 45000
-    const controller = new AbortController()
-    const onAbort = () => controller.abort()
-    options.signal?.addEventListener('abort', onAbort, { once: true })
-    const timer = window.setTimeout(() => controller.abort(), timeoutMs)
-    try {
-      const response = await fetch(url, {
-        ...options,
-        signal: controller.signal,
-      })
-      if (response.ok || (response.status >= 400 && response.status < 500)) {
-        return response
-      }
-      lastError = new Error(`Server returned ${response.status}`)
-    } catch (err) {
-      if (err?.name === 'AbortError' && options.signal?.aborted) throw err
-      lastError = err
-    } finally {
-      window.clearTimeout(timer)
-      options.signal?.removeEventListener('abort', onAbort)
-    }
-
-    if (attempt < retries - 1) {
-      onRetry?.(attempt + 1, retries)
-      await sleep(1500 + attempt * 2000)
-    }
-  }
-  throw lastError || new Error('Server is waking up. Please try again.')
 }
 
 export async function searchSongs(

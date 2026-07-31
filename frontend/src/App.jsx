@@ -77,7 +77,7 @@ export default function App() {
   const [reloadToken, setReloadToken] = useState(0)
   const [error, setError] = useState('')
   const [usingOffline, setUsingOffline] = useState(false)
-  const { online } = useConnectivity({ intervalMs: 45000 })
+  const { online } = useConnectivity({ intervalMs: 60000, timeoutMs: 10000, failThreshold: 3 })
   const prevOnlineRef = useRef(online)
 
   const [favorites, setFavorites] = useState(() => getFavorites())
@@ -307,11 +307,17 @@ export default function App() {
     if (!online) {
       const meta = getOfflineMeta()
       setOfflineMeta(meta)
-      if (meta?.count) {
-        showToast(`Offline mode · ${meta.count.toLocaleString()} songs on this device`)
+      // Only push Offline Pass UI when the *device* reports no network.
+      // Slow API alone should not spam the install modal.
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        if (meta?.count) {
+          showToast(`Offline mode · ${meta.count.toLocaleString()} songs on this device`)
+        } else {
+          showToast('Offline — set up Offline Pass when you’re back online.')
+          setShowInstallApp(true)
+        }
       } else {
-        showToast('Offline — set up Offline Pass when you’re back online.')
-        setShowInstallApp(true)
+        showToast('Server unreachable — retrying…')
       }
     } else if (wasOnline === false) {
       showToast('Back online')
@@ -322,6 +328,7 @@ export default function App() {
   // Cold start already offline (installed PWA opened without network).
   useEffect(() => {
     if (online) return
+    if (typeof navigator !== 'undefined' && navigator.onLine !== false) return
     const meta = getOfflineMeta()
     setOfflineMeta(meta)
     if (!meta?.count) {

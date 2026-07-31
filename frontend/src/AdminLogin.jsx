@@ -22,8 +22,10 @@ export default function AdminLogin({ onBack, onSuccess }) {
       const root = pageRef.current
       if (!root?.querySelector('.admin-login-shell')) return
 
-      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      if (reduced) return
+      const skipMotion =
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
+        window.matchMedia('(pointer: coarse), (max-width: 820px)').matches
+      if (skipMotion) return
 
       const q = (sel) => root.querySelectorAll(sel)
       if (!q('.admin-brand-panel').length || !q('.admin-form-panel').length) return
