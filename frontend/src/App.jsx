@@ -523,7 +523,7 @@ export default function App() {
 
       <div className="songbook-binder">
         <div className="binder-rings" aria-hidden="true">
-          {Array.from({ length: 12 }).map((_, i) => (
+          {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="ring">
               <div className="ring-hole left" />
               <div className="ring-loop" />

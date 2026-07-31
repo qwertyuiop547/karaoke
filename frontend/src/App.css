@@ -4350,19 +4350,52 @@
 
 @media (max-width: 820px), (pointer: coarse) {
   .songbook-page {
-    background-image: none;
-    box-shadow: none;
+    background-image: none !important;
+    box-shadow: none !important;
+  }
+
+  .songbook-binder {
+    background: #16120e;
+    box-shadow: none !important;
+    border-width: 1px;
+  }
+
+  .binder-rings {
+    display: none !important;
   }
 
   .songbook-row,
   .toolbar-btn,
   .cat-pill,
-  .alphabet-btn {
+  .alphabet-btn,
+  .code-display {
     transition: none !important;
+    box-shadow: none !important;
   }
 
-  .songbook-binder {
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  .songbook-row {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 72px;
+    transform: none !important;
+  }
+
+  .songbook-row:hover,
+  .songbook-row:active {
+    transform: none !important;
+    box-shadow: none !important;
+  }
+
+  .code-number {
+    text-shadow: none !important;
+  }
+
+  .dots-leader {
+    display: none !important;
+  }
+
+  .alphabet-bar,
+  .category-bar {
+    -webkit-overflow-scrolling: touch;
   }
 }
 
