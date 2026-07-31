@@ -395,11 +395,28 @@ export async function resolveReport(reportId, payload) {
   return response.json()
 }
 
-export async function fetchOfflinePack({ signal } = {}) {
+export async function fetchOfflinePack({ signal, etag } = {}) {
+  const headers = {}
+  const cleanEtag = etag ? String(etag).trim().replace(/^W\//i, '').replace(/^"|"$/g, '') : ''
+  if (cleanEtag) {
+    headers['If-None-Match'] = `"${cleanEtag}"`
+  }
+
   const response = await fetch(`${API_BASE}/songs/offline-pack/`, {
     signal,
     credentials: 'include',
+    headers,
   })
+
+  if (response.status === 304) {
+    return {
+      notModified: true,
+      etag: cleanEtag || response.headers.get('ETag'),
+      count: 0,
+      results: [],
+    }
+  }
+
   const data = await response.json().catch(() => ({}))
   if (!response.ok) {
     const err = new Error(
@@ -409,7 +426,11 @@ export async function fetchOfflinePack({ signal } = {}) {
     err.status = response.status
     throw err
   }
-  return data
+  return {
+    ...data,
+    notModified: false,
+    etag: response.headers.get('ETag') || cleanEtag || null,
+  }
 }
 
 export async function reportWrongNumber(payload) {

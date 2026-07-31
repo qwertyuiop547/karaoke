@@ -5,6 +5,7 @@ import AdminGate from './AdminGate'
 import { searchSongs, fetchOfflinePack, reportWrongNumber, adminMe } from './api'
 import { usePresencePing } from './usePresencePing'
 import {
+  FREE_FAVORITE_LIMIT,
   getFavorites,
   toggleFavorite,
   removeFavorite,
@@ -13,12 +14,15 @@ import {
 } from './favorites'
 import {
   getOfflineMeta,
+  needsOfflineAutoSync,
   saveOfflineCatalog,
   searchOfflineCatalog,
+  touchOfflineChecked,
 } from './offline'
 import JoinQrModal from './JoinQrModal'
 import InstallAppModal from './InstallAppModal'
 import AccountModal from './AccountModal'
+import PassModal from './PassModal'
 import { usePwaInstall } from './usePwaInstall'
 import { useConnectivity } from './useConnectivity'
 import { consumeJoinParam } from './joinUrl'
@@ -85,6 +89,8 @@ export default function App() {
 
   const [offlineMeta, setOfflineMeta] = useState(() => getOfflineMeta())
   const [syncingOffline, setSyncingOffline] = useState(false)
+  const syncingOfflineRef = useRef(false)
+  const autoSyncTimerRef = useRef(null)
 
   const [reportSong, setReportSong] = useState(null)
   const [reportNote, setReportNote] = useState('')
@@ -94,7 +100,10 @@ export default function App() {
   const [toast, setToast] = useState('')
   const [showJoinQr, setShowJoinQr] = useState(false)
   const [showInstallApp, setShowInstallApp] = useState(false)
+  const [showPass, setShowPass] = useState(false)
+  const [passReason, setPassReason] = useState('')
   const [showAccount, setShowAccount] = useState(false)
+  const [accountMode, setAccountMode] = useState('register')
   const [account, setAccount] = useState({ authenticated: false })
   const { installed: appInstalled, ios, canPromptInstall, promptInstall } = usePwaInstall()
   const [showAdminLogin, setShowAdminLogin] = useState(() => {
@@ -322,6 +331,16 @@ export default function App() {
       }
     } else if (wasOnline === false) {
       showToast('Back online')
+      // Cheap If-None-Match probe whenever we regain connectivity.
+      if (autoSyncTimerRef.current) {
+        window.clearTimeout(autoSyncTimerRef.current)
+      }
+      autoSyncTimerRef.current = window.setTimeout(() => {
+        autoSyncTimerRef.current = null
+        const meta = getOfflineMeta()
+        if (!meta?.count) return
+        handleSyncOffline({ quiet: true })
+      }, 800)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [online])
@@ -455,50 +474,145 @@ export default function App() {
   }
 
   const handleToggleFavorite = (song) => {
-    const { next, added } = toggleFavorite(song)
-    setFavorites(next)
-    showToast(added ? `Saved: ${song.title}` : `Removed from favorites: ${song.title}`)
+    const result = toggleFavorite(song, { unlimited: hasOfflineAccess })
+    if (result.blocked) {
+      openPassOffer(
+        `Free plan allows ${FREE_FAVORITE_LIMIT} favorites. Get Offline Pass for unlimited saves.`,
+      )
+      showToast(`Favorite limit reached (${FREE_FAVORITE_LIMIT}). Unlock Offline Pass.`)
+      return
+    }
+    setFavorites(result.next)
+    showToast(
+      result.added ? `Saved: ${song.title}` : `Removed from favorites: ${song.title}`,
+    )
   }
 
-  const openAccountForOffline = () => {
+  /** Dedicated Pass benefits modal — Get Pass → sign up / login. */
+  const openPassOffer = (reason = '') => {
+    if (hasOfflineAccess) {
+      setAccountMode('register')
+      setShowAccount(true)
+      return
+    }
+    setPassReason(reason)
+    setShowPass(true)
+  }
+
+  const openAccountFromPass = (mode = 'register') => {
+    setShowPass(false)
+    setPassReason('')
+    setAccountMode(mode)
     setShowAccount(true)
   }
 
-  const handleSyncOffline = async () => {
+  const openAccountForOffline = (reason = '') => {
+    openPassOffer(reason)
+  }
+
+  const handleSyncOffline = async (opts = {}) => {
+    const quiet = Boolean(opts?.quiet)
+    const force = Boolean(opts?.force)
+
     if (!account?.authenticated || !hasOfflineAccess) {
-      openAccountForOffline()
+      if (quiet) return { ok: false, reason: 'no_access' }
+      openAccountForOffline(
+        account?.authenticated
+          ? 'Subscribe to Offline Pass to download the full song catalog.'
+          : 'Sign in, then see what Offline Pass unlocks before you buy.',
+      )
       showToast(
         account?.authenticated
           ? 'Offline Pass subscription required.'
           : 'Sign in and subscribe to unlock Offline.',
       )
-      return
+      return { ok: false, reason: 'no_access' }
     }
     if (!online) {
-      showToast('Internet is required to download the offline catalog.')
-      return
+      if (!quiet) showToast('Internet is required to download the offline catalog.')
+      return { ok: false, reason: 'offline' }
     }
-    setSyncingOffline(true)
+    if (syncingOfflineRef.current) return { ok: false, reason: 'busy' }
+
+    const existing = getOfflineMeta()
+    // Quiet auto-update only refreshes an already-saved catalog.
+    if (quiet && !force && !existing?.count) {
+      return { ok: false, reason: 'no_catalog' }
+    }
+
+    syncingOfflineRef.current = true
+    if (!quiet) setSyncingOffline(true)
     try {
-      const pack = await fetchOfflinePack()
+      const pack = await fetchOfflinePack({
+        etag: !force && existing?.etag ? existing.etag : undefined,
+      })
+
+      if (pack.notModified) {
+        const meta = touchOfflineChecked({ etag: pack.etag || existing?.etag })
+        setOfflineMeta(meta)
+        return { ok: true, notModified: true, meta }
+      }
+
       const results = pack.results || []
       if (!results.length) {
         throw new Error('Server returned an empty catalog.')
       }
-      const meta = await saveOfflineCatalog(results)
+      const prevCount = existing?.count || 0
+      const meta = await saveOfflineCatalog(results, { etag: pack.etag })
       setOfflineMeta(meta)
-      showToast(`Offline ready: ${meta.count.toLocaleString()} songs saved on this device.`)
-    } catch (err) {
-      if (err.code === 'login_required' || err.status === 401) {
-        openAccountForOffline()
-      } else if (err.code === 'subscription_required' || err.status === 403) {
-        openAccountForOffline()
+
+      if (quiet) {
+        if (prevCount && meta.count !== prevCount) {
+          showToast(`Catalog updated · ${meta.count.toLocaleString()} songs`)
+        } else if (!prevCount) {
+          showToast(`Offline ready: ${meta.count.toLocaleString()} songs saved on this device.`)
+        }
+      } else {
+        showToast(`Offline ready: ${meta.count.toLocaleString()} songs saved on this device.`)
       }
-      showToast(err.message || 'Failed to save offline catalog.')
+      return { ok: true, notModified: false, meta }
+    } catch (err) {
+      if (!quiet) {
+        if (err.code === 'login_required' || err.status === 401) {
+          openAccountForOffline()
+        } else if (err.code === 'subscription_required' || err.status === 403) {
+          openAccountForOffline()
+        }
+        showToast(err.message || 'Failed to save offline catalog.')
+      }
+      return { ok: false, reason: 'error', error: err }
     } finally {
-      setSyncingOffline(false)
+      syncingOfflineRef.current = false
+      if (!quiet) setSyncingOffline(false)
     }
   }
+
+  const scheduleOfflineAutoSync = (delayMs = 2000) => {
+    if (autoSyncTimerRef.current) {
+      window.clearTimeout(autoSyncTimerRef.current)
+    }
+    autoSyncTimerRef.current = window.setTimeout(() => {
+      autoSyncTimerRef.current = null
+      if (!online || !hasOfflineAccess || !account?.authenticated) return
+      const meta = getOfflineMeta()
+      if (!needsOfflineAutoSync(meta)) return
+      handleSyncOffline({ quiet: true })
+    }, delayMs)
+  }
+
+  // Quiet catalog freshness check for Offline Pass (existing pack only).
+  useEffect(() => {
+    if (!online || !hasOfflineAccess || !account?.authenticated) return
+    if (!needsOfflineAutoSync(getOfflineMeta())) return
+    scheduleOfflineAutoSync(2500)
+    return () => {
+      if (autoSyncTimerRef.current) {
+        window.clearTimeout(autoSyncTimerRef.current)
+        autoSyncTimerRef.current = null
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [online, hasOfflineAccess, account?.authenticated])
 
   const handleSubmitReport = async (e) => {
     e.preventDefault()
@@ -566,7 +680,7 @@ export default function App() {
                   type="button"
                   className="offline-live-btn"
                   onClick={() =>
-                    offlineMeta?.count ? setShowInstallApp(true) : setShowAccount(true)
+                    offlineMeta?.count ? setShowInstallApp(true) : openPassOffer()
                   }
                 >
                   {offlineMeta?.count ? 'Offline Setup' : 'Offline Pass'}
@@ -597,7 +711,11 @@ export default function App() {
                   </svg>
                   <span className="toolbar-btn-text">
                     Favorites
-                    <em>{favorites.length}</em>
+                    <em>
+                      {hasOfflineAccess
+                        ? favorites.length
+                        : `${favorites.length}/${FREE_FAVORITE_LIMIT}`}
+                    </em>
                   </span>
                 </button>
                 <button
@@ -680,7 +798,11 @@ export default function App() {
                 <button
                   type="button"
                   className={`toolbar-btn ${hasOfflineAccess ? 'is-ready' : ''}`}
-                  onClick={() => setShowAccount(true)}
+                  onClick={() =>
+                    hasOfflineAccess || account?.authenticated
+                      ? setShowAccount(true)
+                      : openPassOffer()
+                  }
                 >
                   <svg className="toolbar-ico" viewBox="0 0 24 24" aria-hidden="true">
                     <circle cx="12" cy="8" r="3.2" fill="none" stroke="currentColor" strokeWidth="1.8" />
@@ -989,14 +1111,41 @@ export default function App() {
           >
             <div className="drawer-header">
               <div>
-                <h2 id="favorites-title">Favorites ({favorites.length})</h2>
-                <p>Saved on this device for quick access.</p>
+                <h2 id="favorites-title">
+                  Favorites ({favorites.length}
+                  {!hasOfflineAccess ? `/${FREE_FAVORITE_LIMIT}` : ''})
+                </h2>
+                <p>
+                  {hasOfflineAccess
+                    ? 'Unlimited saves with Offline Pass.'
+                    : `Free: ${FREE_FAVORITE_LIMIT} saves · Pass unlocks unlimited.`}
+                </p>
               </div>
               <button type="button" className="close-drawer-btn" onClick={() => setShowFavorites(false)}>
                 ✕
               </button>
             </div>
             <div className="drawer-body">
+              {!hasOfflineAccess && favorites.length >= FREE_FAVORITE_LIMIT ? (
+                <div className="favorites-limit-banner">
+                  <p>
+                    Nakapag-save ka na ng {FREE_FAVORITE_LIMIT}. Mag-Offline Pass para unlimited
+                    favorites + full offline catalog.
+                  </p>
+                  <button
+                    type="button"
+                    className="favorites-limit-cta"
+                    onClick={() => {
+                      setShowFavorites(false)
+                      openPassOffer(
+                        `Free plan allows ${FREE_FAVORITE_LIMIT} favorites. Get Offline Pass for unlimited saves.`,
+                      )
+                    }}
+                  >
+                    View Offline Pass
+                  </button>
+                </div>
+              ) : null}
               {favorites.length === 0 ? (
                 <p className="empty-drawer-msg">No favorites yet. Tap ☆ Save on a song.</p>
               ) : (
@@ -1021,6 +1170,20 @@ export default function App() {
               )}
             </div>
             <div className="drawer-footer">
+              {!hasOfflineAccess ? (
+                <button
+                  type="button"
+                  className="favorites-pass-btn"
+                  onClick={() => {
+                    setShowFavorites(false)
+                    openPassOffer(
+                      'See what Offline Pass includes — unlimited favorites + offline catalog.',
+                    )
+                  }}
+                >
+                  Get Offline Pass
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="clear-all-btn"
@@ -1103,10 +1266,27 @@ export default function App() {
         />
       ) : null}
 
+      {showPass ? (
+        <PassModal
+          onClose={() => {
+            setShowPass(false)
+            setPassReason('')
+          }}
+          reason={passReason}
+          loggedIn={Boolean(account?.authenticated)}
+          hasAccess={hasOfflineAccess}
+          onGetPass={() => openAccountFromPass('register')}
+          onLogin={() => openAccountFromPass('login')}
+          onManage={() => openAccountFromPass('register')}
+        />
+      ) : null}
+
       {showAccount ? (
         <AccountModal
+          key={`account-${accountMode}-${account?.authenticated ? 'in' : 'out'}`}
           onClose={() => setShowAccount(false)}
           account={account}
+          initialMode={accountMode}
           onAccountChange={(next) => {
             setAccount(next?.authenticated ? next : { authenticated: false })
             if (next?.offline_access) {

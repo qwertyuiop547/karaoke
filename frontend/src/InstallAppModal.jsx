@@ -94,8 +94,8 @@ export default function InstallAppModal({
               <strong>Offline Pass</strong>
               <p>
                 {hasOfflineAccess
-                  ? 'Subscription active — you can download the catalog.'
-                  : 'Subscription required to download the offline song catalog.'}
+                  ? 'Subscription active — unlimited favorites + offline catalog.'
+                  : 'Unlocks unlimited favorites + full offline song catalog.'}
               </p>
             </div>
           </li>
@@ -107,8 +107,8 @@ export default function InstallAppModal({
               <strong>Save song catalog</strong>
               <p>
                 {catalogReady
-                  ? `${offlineMeta.count.toLocaleString()} songs ready offline.`
-                  : 'One-time download (~10k songs) para gumana ang search offline.'}
+                  ? `${offlineMeta.count.toLocaleString()} songs ready offline · auto-updates when online.`
+                  : 'One-time download (~10k songs) para gumana ang smart search offline.'}
               </p>
             </div>
           </li>

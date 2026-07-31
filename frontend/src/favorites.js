@@ -1,5 +1,8 @@
 const FAVORITES_KEY = 'platino_favorites_v1'
 
+/** Free saves without Offline Pass. Pass unlocks unlimited favorites. */
+export const FREE_FAVORITE_LIMIT = 10
+
 function readFavorites() {
   try {
     const raw = localStorage.getItem(FAVORITES_KEY)
@@ -22,9 +25,24 @@ export function isFavorite(songId) {
   return readFavorites().some((s) => s.id === songId)
 }
 
-export function toggleFavorite(song) {
+/**
+ * @param {object} song
+ * @param {{ unlimited?: boolean }} [options]
+ * @returns {{ next: array, added: boolean, blocked?: boolean, limit?: number }}
+ */
+export function toggleFavorite(song, { unlimited = false } = {}) {
   const current = readFavorites()
   const exists = current.some((s) => s.id === song.id)
+
+  if (!exists && !unlimited && current.length >= FREE_FAVORITE_LIMIT) {
+    return {
+      next: current,
+      added: false,
+      blocked: true,
+      limit: FREE_FAVORITE_LIMIT,
+    }
+  }
+
   const next = exists
     ? current.filter((s) => s.id !== song.id)
     : [
@@ -38,7 +56,7 @@ export function toggleFavorite(song) {
         ...current,
       ]
   writeFavorites(next)
-  return { next, added: !exists }
+  return { next, added: !exists, blocked: false }
 }
 
 export function removeFavorite(songId) {

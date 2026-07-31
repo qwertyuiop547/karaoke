@@ -3809,6 +3809,22 @@
   text-align: left;
 }
 
+.account-modal-header--auth {
+  padding-top: 1.15rem;
+}
+
+.pass-modal-actions {
+  padding: 0.95rem 1.25rem 1.35rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.pass-modal .account-benefits {
+  max-height: min(42vh, 22rem);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .account-modal-kicker {
   margin: 0 0 0.2rem;
   font-size: 0.68rem;
@@ -3832,6 +3848,98 @@
   font-size: 0.9rem;
   line-height: 1.45;
   color: var(--text-secondary);
+}
+
+.account-modal-reason {
+  margin: 0.65rem 0 0;
+  padding: 0.55rem 0.7rem;
+  border-radius: 10px;
+  background: rgba(243, 194, 70, 0.12);
+  border: 1px solid rgba(243, 194, 70, 0.28);
+  color: #ffe9a8;
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.account-benefits {
+  list-style: none;
+  margin: 0.85rem 1.25rem 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.account-benefits li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.65rem;
+  align-items: start;
+  padding: 0.55rem 0.65rem;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(243, 194, 70, 0.12);
+}
+
+.account-benefit-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  margin-top: 0.1rem;
+  border-radius: 999px;
+  background: rgba(243, 194, 70, 0.18);
+  color: #f3c246;
+  flex-shrink: 0;
+}
+
+.account-benefits strong {
+  display: block;
+  font-size: 0.88rem;
+  color: #fff4d6;
+  font-weight: 700;
+}
+
+.account-benefits p {
+  margin: 0.15rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+
+.favorites-limit-banner {
+  margin: 0 0 0.85rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 12px;
+  background: rgba(243, 194, 70, 0.1);
+  border: 1px solid rgba(243, 194, 70, 0.28);
+  display: grid;
+  gap: 0.55rem;
+}
+
+.favorites-limit-banner p {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.4;
+  color: #ffe9a8;
+}
+
+.favorites-limit-cta,
+.favorites-pass-btn {
+  border: 1px solid rgba(243, 194, 70, 0.45);
+  background: linear-gradient(180deg, rgba(243, 194, 70, 0.28), rgba(243, 194, 70, 0.12));
+  color: #fff3cf;
+  border-radius: 10px;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font-body);
+}
+
+.favorites-pass-btn {
+  width: 100%;
+  margin-bottom: 0.45rem;
 }
 
 .account-modal-error {

@@ -3,8 +3,56 @@ const STORE = 'songs'
 const META_KEY = 'platino_offline_meta'
 const BATCH_SIZE = 400
 
+/** Re-check server catalog at most every 6 hours (If-None-Match makes it cheap). */
+export const OFFLINE_AUTO_SYNC_MAX_AGE_MS = 6 * 60 * 60 * 1000
+
 /** In-memory cache so mobile search doesn't getAll() from IndexedDB every keystroke. */
 let catalogCache = null
+
+/** Common karaoke nicknames / alternate spellings → canonical search text. */
+const QUERY_ALIASES = {
+  eheads: 'eraserheads',
+  'eraser heads': 'eraserheads',
+  'e heads': 'eraserheads',
+  rivermaya: 'rivermaya',
+  'river maya': 'rivermaya',
+  'parokya ni edgar': 'parokya ni edgar',
+  parokya: 'parokya ni edgar',
+  pne: 'parokya ni edgar',
+  'ben&ben': 'ben and ben',
+  'ben and ben': 'ben and ben',
+  benben: 'ben and ben',
+  sb19: 'sb19',
+  bini: 'bini',
+  'gloc 9': 'gloc-9',
+  gloc9: 'gloc-9',
+  'hale band': 'hale',
+  'the beatles': 'beatles',
+  beatles: 'beatles',
+  'queen band': 'queen',
+  'backstreet boys': 'backstreet boys',
+  bsb: 'backstreet boys',
+  'westlife': 'westlife',
+  'mariah carey': 'mariah carey',
+  mariah: 'mariah carey',
+  'celine dion': 'celine dion',
+  'whitney houston': 'whitney houston',
+  whitney: 'whitney houston',
+  'bruno mars': 'bruno mars',
+  'taylor swift': 'taylor swift',
+  'ed sheeran': 'ed sheeran',
+  'ariana grande': 'ariana grande',
+  'justin bieber': 'justin bieber',
+  'the weeknd': 'the weeknd',
+  weeknd: 'the weeknd',
+  'bohemian rhaposody': 'bohemian rhapsody',
+  'bohemian rapsody': 'bohemian rhapsody',
+  'bohemean rhapsody': 'bohemian rhapsody',
+  'my way frank': 'my way',
+  'wonder wall': 'wonderwall',
+  'dont stop believin': 'dont stop believing',
+  'dont stop believing': 'dont stop believing',
+}
 
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -38,6 +86,11 @@ function requestToPromise(request) {
   })
 }
 
+function stripEtag(etag) {
+  if (!etag) return null
+  return String(etag).trim().replace(/^W\//i, '').replace(/^"|"$/g, '') || null
+}
+
 export function getOfflineMeta() {
   try {
     const raw = localStorage.getItem(META_KEY)
@@ -45,6 +98,36 @@ export function getOfflineMeta() {
   } catch {
     return null
   }
+}
+
+function writeOfflineMeta(meta) {
+  localStorage.setItem(META_KEY, JSON.stringify(meta))
+  return meta
+}
+
+/** True when an existing offline pack should quietly re-check the server. */
+export function needsOfflineAutoSync(
+  meta = getOfflineMeta(),
+  { maxAgeMs = OFFLINE_AUTO_SYNC_MAX_AGE_MS } = {},
+) {
+  if (!meta?.count) return false
+  if (!meta.etag) return true
+  const stamp = meta.checkedAt || meta.savedAt
+  if (!stamp) return true
+  const age = Date.now() - new Date(stamp).getTime()
+  return !Number.isFinite(age) || age < 0 || age >= maxAgeMs
+}
+
+/** Mark a successful 304 / freshness probe without rewriting IndexedDB. */
+export function touchOfflineChecked({ etag } = {}) {
+  const prev = getOfflineMeta() || {}
+  const next = {
+    ...prev,
+    checkedAt: new Date().toISOString(),
+  }
+  const clean = stripEtag(etag)
+  if (clean) next.etag = clean
+  return writeOfflineMeta(next)
 }
 
 export async function countOfflineSongs() {
@@ -60,7 +143,7 @@ export async function countOfflineSongs() {
   }
 }
 
-export async function saveOfflineCatalog(songs) {
+export async function saveOfflineCatalog(songs, { etag } = {}) {
   if (!Array.isArray(songs) || songs.length === 0) {
     throw new Error('Offline pack was empty. Try again while online.')
   }
@@ -109,11 +192,14 @@ export async function saveOfflineCatalog(songs) {
     db.close()
   }
 
+  const now = new Date().toISOString()
   const meta = {
     count: normalized.length,
-    savedAt: new Date().toISOString(),
+    savedAt: now,
+    checkedAt: now,
+    etag: stripEtag(etag) || getOfflineMeta()?.etag || null,
   }
-  localStorage.setItem(META_KEY, JSON.stringify(meta))
+  writeOfflineMeta(meta)
   catalogCache = normalized
   return meta
 }
@@ -132,38 +218,188 @@ async function loadCatalogCached() {
   return catalogCache
 }
 
+function normalizeText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function expandQueryVariants(raw) {
+  const base = normalizeText(raw)
+  if (!base) return []
+
+  const variants = new Set([base])
+
+  const aliasHit = QUERY_ALIASES[base]
+  if (aliasHit) variants.add(normalizeText(aliasHit))
+
+  for (const [alias, canonical] of Object.entries(QUERY_ALIASES)) {
+    if (base === alias) continue
+    if (base.includes(alias)) {
+      variants.add(normalizeText(base.split(alias).join(canonical)))
+    }
+  }
+
+  // Drop doubled letters once (bohemiaan → bohemian-ish help for mild typos)
+  if (/([a-z])\1/.test(base)) {
+    variants.add(base.replace(/([a-z])\1+/g, '$1'))
+  }
+
+  return [...variants]
+}
+
+function maxEditDistance(len) {
+  if (len <= 3) return 0
+  if (len <= 5) return 1
+  if (len <= 9) return 2
+  return 3
+}
+
+function levenshtein(a, b, maxDist) {
+  if (a === b) return 0
+  const la = a.length
+  const lb = b.length
+  if (Math.abs(la - lb) > maxDist) return maxDist + 1
+  if (!la) return lb
+  if (!lb) return la
+
+  let prev = new Array(lb + 1)
+  let curr = new Array(lb + 1)
+  for (let j = 0; j <= lb; j += 1) prev[j] = j
+
+  for (let i = 1; i <= la; i += 1) {
+    curr[0] = i
+    let rowMin = curr[0]
+    const ca = a.charCodeAt(i - 1)
+    for (let j = 1; j <= lb; j += 1) {
+      const cost = ca === b.charCodeAt(j - 1) ? 0 : 1
+      const val = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost)
+      curr[j] = val
+      if (val < rowMin) rowMin = val
+    }
+    if (rowMin > maxDist) return maxDist + 1
+    ;[prev, curr] = [curr, prev]
+  }
+  return prev[lb]
+}
+
+function bestTokenDistance(token, words, maxDist) {
+  let best = maxDist + 1
+  for (const word of words) {
+    if (!word) continue
+    if (word.startsWith(token) || token.startsWith(word)) {
+      return 0
+    }
+    const d = levenshtein(token, word, maxDist)
+    if (d < best) best = d
+    if (best === 0) return 0
+  }
+  return best
+}
+
+function scoreSongAgainstQuery(song, queryVariants, digitsOnly) {
+  const title = normalizeText(song.title)
+  const artist = normalizeText(song.artist)
+  const number = String(song.platinum_number || '').toLowerCase()
+  const hay = `${title} ${artist} ${number}`
+  const titleWords = title.split(' ').filter(Boolean)
+  const artistWords = artist.split(' ').filter(Boolean)
+  const words = [...titleWords, ...artistWords]
+
+  let best = 0
+
+  if (digitsOnly) {
+    if (number === digitsOnly) best = Math.max(best, 120)
+    else if (number.startsWith(digitsOnly)) best = Math.max(best, 100)
+    else if (number.includes(digitsOnly)) best = Math.max(best, 70)
+  }
+
+  for (const q of queryVariants) {
+    if (!q) continue
+
+    if (hay.includes(q)) {
+      best = Math.max(best, title.startsWith(q) || artist.startsWith(q) ? 110 : 100)
+      continue
+    }
+
+    const tokens = q.split(' ').filter(Boolean)
+    if (!tokens.length) continue
+
+    let tokenScore = 0
+    let matched = 0
+    for (const token of tokens) {
+      const maxDist = maxEditDistance(token.length)
+      if (hay.includes(token)) {
+        matched += 1
+        tokenScore += 28
+        continue
+      }
+      const dist = bestTokenDistance(token, words, maxDist)
+      if (dist <= maxDist) {
+        matched += 1
+        tokenScore += Math.max(8, 24 - dist * 8)
+      }
+    }
+
+    if (matched === tokens.length) {
+      best = Math.max(best, 55 + tokenScore)
+    } else if (matched > 0 && matched >= Math.ceil(tokens.length * 0.6)) {
+      best = Math.max(best, 25 + tokenScore)
+    }
+  }
+
+  return best
+}
+
 export async function searchOfflineCatalog(
   query,
   { letter = 'ALL', category = 'ALL', page = 1, pageSize = 10 } = {},
 ) {
   const all = await loadCatalogCached()
 
-  const q = query.trim().toLowerCase()
-  let filtered = all
+  const raw = query.trim()
+  const queryVariants = expandQueryVariants(raw)
+  const digitsOnly = /^\d+$/.test(raw.trim()) ? raw.trim() : ''
 
-  if (q) {
-    filtered = filtered.filter((s) => {
-      const hay = `${s.title} ${s.artist} ${s.platinum_number}`.toLowerCase()
-      return hay.includes(q)
-    })
+  let scored = all.map((song) => {
+    let score = 0
+    if (queryVariants.length) {
+      score = scoreSongAgainstQuery(song, queryVariants, digitsOnly)
+    } else {
+      score = 1
+    }
+    return { song, score }
+  })
+
+  if (queryVariants.length) {
+    scored = scored.filter((row) => row.score > 0)
   }
 
   if (letter && letter !== 'ALL') {
-    filtered = filtered.filter((s) => (s.title || '').toUpperCase().startsWith(letter))
+    scored = scored.filter((row) => (row.song.title || '').toUpperCase().startsWith(letter))
   }
 
   if (category === 'OPM') {
-    filtered = filtered.filter(
-      (s) =>
-        (s.language || '').toLowerCase() === 'filipino' ||
-        (s.genre || '').toLowerCase() === 'opm',
+    scored = scored.filter(
+      (row) =>
+        (row.song.language || '').toLowerCase() === 'filipino' ||
+        (row.song.genre || '').toLowerCase() === 'opm',
     )
   } else if (category === 'ENGLISH') {
-    filtered = filtered.filter((s) => (s.language || '').toLowerCase() === 'english')
+    scored = scored.filter((row) => (row.song.language || '').toLowerCase() === 'english')
   }
 
-  filtered.sort((a, b) => (a.title || '').localeCompare(b.title || ''))
+  scored.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score
+    return (a.song.title || '').localeCompare(b.song.title || '')
+  })
 
+  const filtered = scored.map((row) => row.song)
   const start = (page - 1) * pageSize
   const results = filtered.slice(start, start + pageSize)
   const hasMore = start + pageSize < filtered.length

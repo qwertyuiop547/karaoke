@@ -6,26 +6,22 @@ import {
   subscriberLogout,
   subscriberRegister,
 } from './api'
-
-const PASS_PRICE = import.meta.env.VITE_OFFLINE_PASS_PRICE || '₱199'
-const PASS_PERIOD = import.meta.env.VITE_OFFLINE_PASS_PERIOD || '/mo'
-const PASS_LABEL =
-  import.meta.env.VITE_OFFLINE_PASS_LABEL || `Offline Pass · ${PASS_PRICE}${PASS_PERIOD}`
+import { PASS_LABEL, PASS_PERIOD, PASS_PRICE } from './passBenefits'
 
 /**
- * Account + Offline Pass paywall (separate from staff AdminGate).
+ * Sign up / log in / checkout — opened after Pass modal Get Pass / Log in.
  */
 export default function AccountModal({
   onClose,
   account,
   onAccountChange,
-  initialMode = 'login',
+  initialMode = 'register',
   syncingOffline = false,
   onSaveOffline,
 }) {
   const [mode, setMode] = useState(() => {
     if (account?.authenticated) return 'subscribe'
-    return initialMode
+    return initialMode === 'login' ? 'login' : 'register'
   })
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -113,16 +109,18 @@ export default function AccountModal({
   const title = hasAccess
     ? 'Offline unlocked'
     : loggedIn
-      ? 'Unlock Offline Pass'
+      ? 'Complete your Offline Pass'
       : mode === 'register'
         ? 'Create your account'
-        : 'Sign in to continue'
+        : 'Log in to continue'
 
   const lead = hasAccess
     ? 'Save the full song catalog on this device — searchable without Wi‑Fi.'
     : loggedIn
-      ? 'Online search stays free. Offline catalog needs an active Offline Pass.'
-      : 'Mag-login o mag-sign up para i-unlock ang offline song catalog.'
+      ? 'Account ready — continue to checkout para ma-activate ang Offline Pass.'
+      : mode === 'register'
+        ? 'Sign up first, then checkout for Offline Pass.'
+        : 'Log in with your existing account to get Offline Pass.'
 
   return (
     <div className="drawer-overlay install-app-overlay" onClick={onClose}>
@@ -150,34 +148,9 @@ export default function AccountModal({
           </svg>
         </button>
 
-        <div className="account-pass-banner" aria-hidden="true">
-          <div className="account-pass-ticket">
-            <div className="account-pass-ticket-main">
-              <span className="account-pass-brand">Platino</span>
-              <strong>Offline Pass</strong>
-              <span className="account-pass-price">
-                {PASS_PRICE}
-                <em>{PASS_PERIOD}</em>
-              </span>
-            </div>
-            <div className="account-pass-stub">
-              <svg className="account-pass-mic" viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="12" cy="9" r="4" fill="none" stroke="currentColor" strokeWidth="1.8" />
-                <path
-                  d="M12 13v5M8 21h8"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        <header className="account-modal-header">
+        <header className="account-modal-header account-modal-header--auth">
           <p className="account-modal-kicker">
-            {hasAccess ? 'Active' : loggedIn ? 'Subscribe' : 'Account'}
+            {hasAccess ? 'Active' : loggedIn ? 'Checkout' : 'Account'}
           </p>
           <h2 id="account-modal-title">{title}</h2>
           <p className="account-modal-lead">{lead}</p>
@@ -195,18 +168,6 @@ export default function AccountModal({
               <button
                 type="button"
                 role="tab"
-                aria-selected={mode === 'login'}
-                className={mode === 'login' ? 'active' : ''}
-                onClick={() => {
-                  setMode('login')
-                  setError('')
-                }}
-              >
-                Log in
-              </button>
-              <button
-                type="button"
-                role="tab"
                 aria-selected={mode === 'register'}
                 className={mode === 'register' ? 'active' : ''}
                 onClick={() => {
@@ -215,6 +176,18 @@ export default function AccountModal({
                 }}
               >
                 Sign up
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === 'login'}
+                className={mode === 'login' ? 'active' : ''}
+                onClick={() => {
+                  setMode('login')
+                  setError('')
+                }}
+              >
+                Log in
               </button>
             </div>
 
@@ -234,7 +207,7 @@ export default function AccountModal({
 
             <label className="account-field" htmlFor="account-password">
               <span>Password</span>
-              <div className="account-field-password">
+              <div className="account-password-row">
                 <input
                   id="account-password"
                   name="password"
@@ -279,7 +252,7 @@ export default function AccountModal({
             </button>
 
             <p className="account-modal-footnote">
-              Free online search · Offline catalog needs {PASS_LABEL}
+              Next: checkout for {PASS_LABEL}
             </p>
           </form>
         ) : (
@@ -316,7 +289,7 @@ export default function AccountModal({
                 <div className="account-plan-card">
                   <div>
                     <p className="account-plan-name">Offline Pass</p>
-                    <p className="account-plan-desc">Full catalog on this device</p>
+                    <p className="account-plan-desc">Offline catalog + unlimited favorites</p>
                   </div>
                   <p className="account-plan-price">
                     {PASS_PRICE}
@@ -329,7 +302,7 @@ export default function AccountModal({
                   onClick={handleCheckout}
                   disabled={busy}
                 >
-                  {busy ? 'Redirecting…' : 'Subscribe now'}
+                  {busy ? 'Redirecting…' : 'Continue to checkout'}
                 </button>
                 <p className="account-modal-footnote">
                   Or pay via GCash and ask admin to activate your email.
