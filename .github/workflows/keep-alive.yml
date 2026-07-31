@@ -15,5 +15,7 @@ jobs:
       - name: Wake karaoke web service
         run: |
           set -e
-          curl -fsS --max-time 90 "https://karaoke-04qs.onrender.com/api/auth/csrf/" >/dev/null
+          # Prefer Railway; keep Render as fallback while both exist.
+          curl -fsS --max-time 90 "https://karaoke-production-bc45.up.railway.app/api/health/" >/dev/null \
+            || curl -fsS --max-time 90 "https://karaoke-04qs.onrender.com/api/auth/csrf/" >/dev/null
           echo "OK $(date -u +%H:%M:%SZ)"

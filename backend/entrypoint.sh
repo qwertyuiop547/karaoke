@@ -3,10 +3,9 @@ set -e
 
 python manage.py migrate --noinput
 
-# Fresh Render Postgres starts empty — load Platinum catalog once.
+# Fresh Postgres starts empty — load Platinum catalog once.
 python manage.py seed_songs --if-empty
 
-# Free plan: one worker wakes faster and uses less RAM.
 WORKERS="${WEB_CONCURRENCY:-1}"
 THREADS="${WEB_THREADS:-2}"
 

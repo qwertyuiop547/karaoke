@@ -12,9 +12,13 @@ if not DEBUG and SECRET_KEY.startswith('django-insecure'):
     raise RuntimeError('Set a strong DJANGO_SECRET_KEY when DJANGO_DEBUG=false.')
 
 ALLOWED_HOSTS = [h.strip() for h in os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if h.strip()]
-_render_host = (os.getenv('RENDER_EXTERNAL_HOSTNAME') or '').strip()
-if _render_host and _render_host not in ALLOWED_HOSTS:
-    ALLOWED_HOSTS.append(_render_host)
+_public_host = (
+    os.getenv('RENDER_EXTERNAL_HOSTNAME')
+    or os.getenv('RAILWAY_PUBLIC_DOMAIN')
+    or ''
+).strip()
+if _public_host and _public_host not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(_public_host)
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -143,12 +147,12 @@ CSRF_TRUSTED_ORIGINS = [
     ).split(',')
     if origin.strip()
 ]
-if _render_host:
-    _render_origin = f'https://{_render_host}'
-    if _render_origin not in CSRF_TRUSTED_ORIGINS:
-        CSRF_TRUSTED_ORIGINS.append(_render_origin)
-    if _render_origin not in CORS_ALLOWED_ORIGINS:
-        CORS_ALLOWED_ORIGINS.append(_render_origin)
+if _public_host:
+    _public_origin = f'https://{_public_host}'
+    if _public_origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(_public_origin)
+    if _public_origin not in CORS_ALLOWED_ORIGINS:
+        CORS_ALLOWED_ORIGINS.append(_public_origin)
 
 # Frontend admin login redirects here after success
 ADMIN_FRONTEND_REDIRECT = os.getenv('ADMIN_URL', 'http://127.0.0.1:8000/admin/')
@@ -194,7 +198,7 @@ SONG_LIST_CACHE_TTL = int(os.getenv('SONG_LIST_CACHE_TTL', '20'))
 
 # Stripe Offline Pass (subscription)
 _default_frontend = (
-    f'https://{_render_host}' if _render_host else 'http://localhost:5173'
+    f'https://{_public_host}' if _public_host else 'http://localhost:5173'
 )
 FRONTEND_URL = os.getenv('FRONTEND_URL', _default_frontend).rstrip('/')
 STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY', '').strip()
@@ -222,7 +226,7 @@ if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'true').lower() == 'true'
+    SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'false').lower() == 'true'
     SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS', '31536000'))
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
