@@ -1,8 +1,8 @@
 # Multi-stage: Vite frontend + Django/Gunicorn API (serves SPA)
 FROM node:22-alpine AS frontend
 WORKDIR /fe
-COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm install
 COPY frontend/ ./
 # Same-origin API when served by Django
 ENV VITE_API_URL=/api
