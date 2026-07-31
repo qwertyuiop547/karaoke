@@ -573,7 +573,7 @@ export default function App() {
                 </button>
               </div>
             ) : null}
-            <div className="header-badge">THE PLATINUM KARAOKE</div>
+            <div className="header-badge">Partnered by JustQ</div>
             <h1 className="songbook-title">OFFICIAL SONGBOOK</h1>
             <p className="songbook-subtitle">
               Look up a title or artist and get the song number right away.
