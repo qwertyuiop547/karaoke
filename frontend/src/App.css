@@ -3271,7 +3271,7 @@
   }
 
   .admin-dash-main {
-    padding: 0.9rem 0.7rem 1.1rem;
+    padding: 1rem 0.8rem 1.2rem;
     border-radius: 14px;
     overflow: hidden;
   }
@@ -4098,14 +4098,278 @@
 
 .admin-subscribers {
   display: grid;
-  gap: 1.25rem;
+  gap: 1.15rem;
 }
 
-.admin-subscribers-form {
+.admin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.admin-field > span {
+  font-family: var(--font-number);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.admin-field input,
+.admin-field select,
+.admin-field textarea {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(243, 194, 70, 0.22);
+  background: rgba(10, 8, 6, 0.55);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.95rem;
+  padding: 0.78rem 0.9rem;
+  outline: none;
+}
+
+.admin-field input:focus,
+.admin-field select:focus,
+.admin-field textarea:focus {
+  border-color: rgba(243, 194, 70, 0.55);
+  box-shadow: 0 0 0 3px rgba(243, 194, 70, 0.12);
+}
+
+.admin-pass-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid rgba(243, 194, 70, 0.28);
+  background:
+    linear-gradient(135deg, rgba(243, 194, 70, 0.12), transparent 42%),
+    linear-gradient(180deg, rgba(42, 34, 26, 0.96), rgba(18, 14, 11, 0.98));
+  padding: 1.15rem 1.05rem 1.1rem;
+}
+
+.admin-pass-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: linear-gradient(180deg, #f7d268, #b8861a);
+}
+
+.admin-pass-card-top {
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.admin-pass-badge {
+  flex-shrink: 0;
+  width: 2.7rem;
+  height: 2.7rem;
+  border-radius: 12px;
   display: grid;
-  grid-template-columns: 1.4fr 1fr auto;
+  place-items: center;
+  color: #120e0a;
+  background: linear-gradient(145deg, #f3c246, #d49f2a 55%, #b8861a);
+}
+
+.admin-pass-copy {
+  min-width: 0;
+}
+
+.admin-pass-title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.15rem;
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
+}
+
+.admin-pass-lead {
+  margin: 0.35rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.admin-pass-form {
+  display: grid;
+  grid-template-columns: 1.45fr 1fr auto;
   gap: 0.75rem;
   align-items: end;
+}
+
+.admin-pass-submit {
+  min-height: 3rem;
+  padding-inline: 1.15rem;
+  white-space: nowrap;
+}
+
+.admin-pass-loading {
+  margin: 0;
+  padding: 1rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  border-radius: 12px;
+  border: 1px solid rgba(243, 194, 70, 0.12);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.admin-pass-empty {
+  text-align: center;
+  padding: 2rem 1.1rem 1.85rem;
+  border-radius: 16px;
+  border: 1px dashed rgba(243, 194, 70, 0.28);
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(243, 194, 70, 0.08), transparent 55%),
+    rgba(0, 0, 0, 0.18);
+}
+
+.admin-pass-empty-mark {
+  display: flex;
+  justify-content: center;
+  gap: 0.35rem;
+  margin-bottom: 0.9rem;
+}
+
+.admin-pass-empty-mark span {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: rgba(243, 194, 70, 0.45);
+}
+
+.admin-pass-empty-mark span:nth-child(2) {
+  background: rgba(243, 194, 70, 0.75);
+  transform: translateY(-2px);
+}
+
+.admin-pass-empty h3 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.15rem;
+  color: var(--text-primary);
+}
+
+.admin-pass-empty p {
+  margin: 0.55rem auto 0;
+  max-width: 28rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.admin-pass-list {
+  display: none;
+  gap: 0.7rem;
+}
+
+.admin-pass-row {
+  display: grid;
+  gap: 0.85rem;
+  padding: 0.9rem 0.95rem;
+  border-radius: 14px;
+  border: 1px solid rgba(243, 194, 70, 0.18);
+  background: rgba(12, 10, 8, 0.45);
+}
+
+.admin-pass-row.is-active {
+  border-color: rgba(143, 209, 158, 0.28);
+  background:
+    linear-gradient(135deg, rgba(80, 180, 110, 0.08), transparent 50%),
+    rgba(12, 10, 8, 0.45);
+}
+
+.admin-pass-row-main {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.admin-pass-row-avatar {
+  width: 2.45rem;
+  height: 2.45rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-number);
+  font-weight: 700;
+  color: #120e0a;
+  background: linear-gradient(145deg, #f3c246, #b8861a);
+}
+
+.admin-pass-row-body {
+  min-width: 0;
+}
+
+.admin-pass-row-body h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-pass-row-body p {
+  margin: 0.2rem 0 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-family: var(--font-number);
+  letter-spacing: 0.04em;
+}
+
+.admin-pass-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.admin-pass-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.7rem;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.admin-pass-pill.on {
+  color: #8fd19e;
+  background: rgba(80, 180, 110, 0.14);
+  border: 1px solid rgba(143, 209, 158, 0.3);
+}
+
+.admin-pass-pill.off {
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.admin-pass-status {
+  font-family: var(--font-number);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.admin-pass-extend {
+  margin-left: auto;
+  min-height: 2.2rem;
+  padding: 0.45rem 0.8rem;
+}
+
+.admin-pass-table-desktop {
+  display: block;
 }
 
 .admin-section-title {
@@ -4115,15 +4379,42 @@
 
 .admin-section-lead {
   margin: 0 0 0.85rem;
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 0.9rem;
 }
 
-@media (max-width: 720px) {
-  .admin-subscribers-form {
+@media (max-width: 820px) {
+  .admin-pass-form {
     grid-template-columns: 1fr;
   }
 
+  .admin-pass-submit {
+    width: 100%;
+  }
+
+  .admin-pass-list {
+    display: grid;
+  }
+
+  .admin-pass-table-desktop {
+    display: none;
+  }
+
+  .admin-pass-card {
+    padding: 1rem 0.9rem 0.95rem;
+    border-radius: 14px;
+  }
+
+  .admin-pass-title {
+    font-size: 1.05rem;
+  }
+
+  .admin-pass-lead {
+    font-size: 0.84rem;
+  }
+}
+
+@media (max-width: 720px) {
   .admin-tabs-five {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
