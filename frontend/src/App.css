@@ -1340,10 +1340,6 @@
     text-align: center;
   }
 }
-  color: #ffb4a8;
-  background: rgba(217, 56, 56, 0.15);
-  border-color: rgba(255, 180, 168, 0.3);
-}
 
 .row-actions {
   display: flex;
