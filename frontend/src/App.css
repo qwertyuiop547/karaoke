@@ -420,12 +420,23 @@
   position: relative;
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
   background:
     linear-gradient(180deg, rgba(20, 16, 12, 0.95), rgba(12, 10, 8, 0.98));
   border: 1px solid rgba(243, 194, 70, 0.22);
   border-radius: 12px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
   overflow: hidden;
+}
+
+.alphabet-all-pin {
+  position: relative;
+  z-index: 2;
+  align-self: center;
+  margin-left: 0.45rem;
+  flex-shrink: 0;
 }
 
 .alphabet-rail::before,
@@ -442,6 +453,7 @@
 .alphabet-rail::before {
   left: 0;
   background: linear-gradient(90deg, rgba(12, 10, 8, 0.95), transparent);
+  display: none; /* pin handles the left edge */
 }
 
 .alphabet-rail::after {
@@ -455,12 +467,15 @@
   gap: 0.28rem;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 0.45rem 0.7rem;
+  padding: 0.45rem 0.7rem 0.45rem 0.4rem;
   scrollbar-width: none;
   -ms-overflow-style: none;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
   touch-action: pan-x;
+  scroll-snap-type: x proximity;
+  min-width: 0;
+  flex: 1;
 }
 
 .alphabet-scroll::-webkit-scrollbar {
@@ -481,6 +496,7 @@
   justify-content: center;
   border-radius: 8px;
   flex-shrink: 0;
+  scroll-snap-align: center;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
 
@@ -1841,36 +1857,85 @@
     display: none;
   }
 
-  /* A-Z becomes a wrap grid on phones — no sideways page scroll */
+  /* A-Z: single-row swipe rail on phones (not a tall wrap grid) */
+  .alphabet-bar {
+    gap: 0.65rem;
+  }
+
+  .alphabet-label-wrap {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    min-width: 0;
+    padding: 0 0.1rem;
+  }
+
+  .alphabet-label {
+    font-size: 0.95rem;
+  }
+
+  .alphabet-label-sub {
+    margin-top: 0;
+    min-width: 1.4rem;
+    text-align: right;
+    color: var(--gold);
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+  }
+
+  .alphabet-rail {
+    border-radius: 999px;
+    padding: 0.2rem;
+    background:
+      linear-gradient(180deg, rgba(36, 30, 24, 0.98), rgba(16, 13, 11, 0.98));
+    border-color: rgba(243, 194, 70, 0.28);
+  }
+
   .alphabet-rail::before,
   .alphabet-rail::after {
     display: none;
   }
 
+  .alphabet-all-pin {
+    margin-left: 0.15rem;
+    margin-right: 0.1rem;
+    height: 2.55rem;
+    min-width: 3rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+  }
+
   .alphabet-scroll {
-    display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: 0.3rem;
-    overflow: visible;
-    padding: 0.55rem;
-    touch-action: manipulation;
+    display: flex;
+    grid-template-columns: none;
+    gap: 0.22rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.15rem 0.55rem 0.15rem 0.25rem;
+    touch-action: pan-x;
+    scroll-snap-type: x mandatory;
+    mask-image: linear-gradient(90deg, #000 0%, #000 88%, transparent 100%);
+    -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 88%, transparent 100%);
   }
 
   .alphabet-btn {
-    min-width: 0;
-    width: 100%;
-    height: 2.35rem;
-    font-size: 0.78rem;
-    border-radius: 7px;
+    min-width: 2.55rem;
+    width: auto;
+    height: 2.55rem;
+    font-size: 0.86rem;
+    border-radius: 999px;
+    scroll-snap-align: center;
   }
 
   .alphabet-btn.is-all {
-    grid-column: span 2;
-    min-width: 0;
+    grid-column: auto;
+    min-width: 3rem;
   }
 
   .alphabet-btn.active {
     transform: none;
+    box-shadow: 0 4px 14px rgba(212, 159, 42, 0.32);
   }
 
   .category-pills {
@@ -2111,18 +2176,20 @@
   }
 
   .alphabet-scroll {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 0.28rem;
-    padding: 0.45rem;
+    gap: 0.18rem;
+    padding: 0.12rem 0.45rem 0.12rem 0.2rem;
   }
 
   .alphabet-btn {
-    height: 2.2rem;
-    font-size: 0.74rem;
+    min-width: 2.4rem;
+    height: 2.4rem;
+    font-size: 0.8rem;
   }
 
+  .alphabet-all-pin,
   .alphabet-btn.is-all {
-    grid-column: span 2;
+    min-width: 2.75rem;
+    height: 2.4rem;
   }
 
   .cat-pill {
@@ -4396,6 +4463,10 @@
   .alphabet-bar,
   .category-bar {
     -webkit-overflow-scrolling: touch;
+  }
+
+  .alphabet-btn.active {
+    box-shadow: 0 3px 10px rgba(212, 159, 42, 0.28) !important;
   }
 }
 

@@ -109,6 +109,7 @@ export default function App() {
 
   const containerRef = useRef(null)
   const listRef = useRef(null)
+  const alphabetScrollRef = useRef(null)
   const prefersReducedMotion =
     typeof window !== 'undefined' &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -336,6 +337,13 @@ export default function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    const root = alphabetScrollRef.current
+    if (!root) return
+    const active = root.querySelector('.alphabet-btn.active')
+    active?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
+  }, [selectedLetter])
 
   const openAdminLogin = () => {
     window.location.hash = 'admin'
@@ -792,19 +800,34 @@ export default function App() {
             <div className="alphabet-bar">
               <div className="alphabet-label-wrap">
                 <span className="alphabet-label">A–Z</span>
-                <span className="alphabet-label-sub">Index</span>
+                <span className="alphabet-label-sub">
+                  {selectedLetter === 'ALL' ? 'Index' : selectedLetter}
+                </span>
               </div>
               <div className="alphabet-rail">
-                <div className="alphabet-scroll" role="group" aria-label="Jump to letter">
-                  {ALPHABET.map((letter) => (
+                <button
+                  type="button"
+                  className={`alphabet-btn is-all alphabet-all-pin ${selectedLetter === 'ALL' ? 'active' : ''}`}
+                  onClick={() => setSelectedLetter('ALL')}
+                  aria-pressed={selectedLetter === 'ALL'}
+                >
+                  All
+                </button>
+                <div
+                  className="alphabet-scroll"
+                  role="group"
+                  aria-label="Jump to letter"
+                  ref={alphabetScrollRef}
+                >
+                  {ALPHABET.filter((letter) => letter !== 'ALL').map((letter) => (
                     <button
                       key={letter}
                       type="button"
-                      className={`alphabet-btn ${letter === 'ALL' ? 'is-all' : ''} ${selectedLetter === letter ? 'active' : ''}`}
+                      className={`alphabet-btn ${selectedLetter === letter ? 'active' : ''}`}
                       onClick={() => setSelectedLetter(letter)}
                       aria-pressed={selectedLetter === letter}
                     >
-                      {letter === 'ALL' ? 'All' : letter}
+                      {letter}
                     </button>
                   ))}
                 </div>
