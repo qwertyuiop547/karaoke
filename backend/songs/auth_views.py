@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 
 from .entitlements import (
     ensure_subscriber_profile,
+    start_free_trial,
     subscription_payload,
     user_has_offline_access,
 )
@@ -219,6 +220,7 @@ class SubscriberRegisterView(APIView):
 
         user = User.objects.create_user(username=email, email=email, password=password)
         ensure_subscriber_profile(user)
+        start_free_trial(user)
         login(request, user)
         return Response({'ok': True, 'message': 'Account created.', **_auth_payload(user)}, status=status.HTTP_201_CREATED)
 

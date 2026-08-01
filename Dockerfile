@@ -4,8 +4,11 @@ WORKDIR /fe
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm install
 COPY frontend/ ./
-# Same-origin API when served by Django
+# Same-origin API when served by Django; display price for Offline Pass UI
 ENV VITE_API_URL=/api
+ENV VITE_OFFLINE_PASS_PRICE="₱149"
+ENV VITE_OFFLINE_PASS_PERIOD="/mo"
+ENV VITE_OFFLINE_PASS_LABEL="Offline Pass · ₱149/mo"
 RUN npm run build
 
 FROM python:3.12-slim

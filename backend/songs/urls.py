@@ -14,6 +14,7 @@ from .billing_views import (
     BillingAdminActivateView,
     BillingCheckoutView,
     BillingPortalView,
+    BillingStartTrialView,
     BillingSubscribersListView,
     BillingWebhookView,
 )
@@ -39,6 +40,7 @@ urlpatterns = [
         name='auth-subscriber-login',
     ),
     path('billing/checkout/', BillingCheckoutView.as_view(), name='billing-checkout'),
+    path('billing/start-trial/', BillingStartTrialView.as_view(), name='billing-start-trial'),
     path('billing/portal/', BillingPortalView.as_view(), name='billing-portal'),
     path('billing/webhook/', BillingWebhookView.as_view(), name='billing-webhook'),
     path(

@@ -1,17 +1,39 @@
-import { PASS_BENEFITS, PASS_PERIOD, PASS_PRICE } from './passBenefits'
+import { PASS_BENEFITS, PASS_PERIOD, PASS_PRICE, TRIAL_DAYS } from './passBenefits'
 
 /**
- * Dedicated Offline Pass offer — benefits first, then Get Pass → sign up / login.
+ * Dedicated Offline Pass offer — benefits first, then Get Pass → sign up / login / trial.
  */
 export default function PassModal({
   onClose,
   reason = '',
   loggedIn = false,
   hasAccess = false,
+  trialAvailable = false,
   onGetPass,
   onLogin,
   onManage,
+  onStartTrial,
 }) {
+  const primaryLabel = hasAccess
+    ? 'Open account'
+    : loggedIn && trialAvailable
+      ? `Start ${TRIAL_DAYS}-day free trial`
+      : loggedIn
+        ? 'Get Pass'
+        : `Start ${TRIAL_DAYS}-day free trial`
+
+  const onPrimary = () => {
+    if (hasAccess) {
+      onManage?.()
+      return
+    }
+    if (loggedIn && trialAvailable) {
+      onStartTrial?.()
+      return
+    }
+    onGetPass?.()
+  }
+
   return (
     <div className="drawer-overlay install-app-overlay" onClick={onClose}>
       <div
@@ -65,7 +87,7 @@ export default function PassModal({
 
         <header className="account-modal-header">
           <p className="account-modal-kicker">
-            {hasAccess ? 'Active' : 'Subscription'}
+            {hasAccess ? 'Active' : `${TRIAL_DAYS}-day trial`}
           </p>
           <h2 id="pass-modal-title">
             {hasAccess ? 'Your Offline Pass' : 'Offline Pass'}
@@ -73,7 +95,7 @@ export default function PassModal({
           <p className="account-modal-lead">
             {hasAccess
               ? 'Pass is active on this account — manage billing or save the catalog.'
-              : 'Ito ang makukuha mo kapag nag-avail ka ng Offline Pass.'}
+              : `Subukan muna nang libre for ${TRIAL_DAYS} days. Pagkatapos, ${PASS_PRICE}${PASS_PERIOD} para magpatuloy.`}
           </p>
           {reason && !hasAccess ? <p className="account-modal-reason">{reason}</p> : null}
         </header>
@@ -104,26 +126,20 @@ export default function PassModal({
         ) : null}
 
         <div className="pass-modal-actions">
-          {hasAccess ? (
-            <button type="button" className="account-primary-btn" onClick={onManage}>
-              Open account
+          <button type="button" className="account-primary-btn" onClick={onPrimary}>
+            {primaryLabel}
+          </button>
+          {!hasAccess && !loggedIn ? (
+            <button type="button" className="account-text-btn" onClick={onLogin}>
+              May account ka na? Log in
             </button>
-          ) : (
-            <>
-              <button type="button" className="account-primary-btn" onClick={onGetPass}>
-                Get Pass
-              </button>
-              {loggedIn ? (
-                <p className="account-modal-footnote">
-                  Naka-sign in ka na — tapos na ang next step sa checkout.
-                </p>
-              ) : (
-                <button type="button" className="account-text-btn" onClick={onLogin}>
-                  May account ka na? Log in
-                </button>
-              )}
-            </>
-          )}
+          ) : null}
+          {!hasAccess && loggedIn && !trialAvailable ? (
+            <p className="account-modal-footnote">
+              Trial used — continue with {PASS_PRICE}
+              {PASS_PERIOD} checkout.
+            </p>
+          ) : null}
         </div>
       </div>
     </div>

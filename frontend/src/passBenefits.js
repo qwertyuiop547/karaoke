@@ -4,8 +4,13 @@ export const PASS_PRICE = import.meta.env.VITE_OFFLINE_PASS_PRICE || '₱149'
 export const PASS_PERIOD = import.meta.env.VITE_OFFLINE_PASS_PERIOD || '/mo'
 export const PASS_LABEL =
   import.meta.env.VITE_OFFLINE_PASS_LABEL || `Offline Pass · ${PASS_PRICE}${PASS_PERIOD}`
+export const TRIAL_DAYS = Number(import.meta.env.VITE_OFFLINE_TRIAL_DAYS || 2) || 2
 
 export const PASS_BENEFITS = [
+  {
+    title: `${TRIAL_DAYS}-day free trial`,
+    detail: `Sign up and try Offline Pass free for ${TRIAL_DAYS} days — one trial per account.`,
+  },
   {
     title: 'Unlimited favorites',
     detail: 'Free plan stops at 10 saves — Pass unlocks unlimited ☆ Save.',

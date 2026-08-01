@@ -3677,7 +3677,10 @@
   max-height: min(92dvh, 920px);
   margin: 0;
   padding: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   border-radius: 18px;
   border: 1px solid rgba(243, 194, 70, 0.28);
   border-left: 3px solid #f3c246;
@@ -3805,8 +3808,9 @@
 }
 
 .account-modal-header {
-  padding: 1rem 1.25rem 0.35rem;
+  padding: 1rem 2.85rem 0.35rem 1.25rem;
   text-align: left;
+  flex-shrink: 0;
 }
 
 .account-modal-header--auth {
@@ -3957,6 +3961,7 @@
   padding: 0.85rem 1.25rem 1.3rem;
   display: grid;
   gap: 0.75rem;
+  min-width: 0;
 }
 
 .account-mode-tabs {
@@ -4002,12 +4007,14 @@
 
 .account-field input {
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   border-radius: 11px;
   border: 1px solid rgba(243, 194, 70, 0.22);
   background: rgba(0, 0, 0, 0.38);
   color: var(--text-primary);
   padding: 0.78rem 0.9rem;
-  font-size: 0.95rem;
+  font-size: 1rem;
   font-family: var(--font-body);
   outline: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -4022,20 +4029,35 @@
   box-shadow: 0 0 0 3px var(--gold-glow);
 }
 
+.account-password-row,
 .account-field-password {
   position: relative;
-  display: grid;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  min-width: 0;
+  width: 100%;
 }
 
+.account-password-row input,
 .account-field-password input {
-  padding-right: 4.2rem;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  padding-right: 4.4rem;
 }
 
 .account-toggle-pw {
   position: absolute;
-  right: 0.45rem;
-  top: 50%;
-  transform: translateY(-50%);
+  right: 0.35rem;
+  top: 0;
+  bottom: 0;
+  margin: auto 0;
+  height: fit-content;
+  max-height: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
   background: transparent;
   color: var(--gold);
@@ -4044,7 +4066,10 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   cursor: pointer;
-  padding: 0.35rem 0.45rem;
+  padding: 0.35rem 0.55rem;
+  z-index: 2;
+  line-height: 1;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .account-primary-btn {
@@ -4173,6 +4198,12 @@
   background:
     linear-gradient(135deg, rgba(243, 194, 70, 0.12), transparent 60%),
     rgba(0, 0, 0, 0.28);
+  min-width: 0;
+}
+
+.account-plan-card > div {
+  min-width: 0;
+  flex: 1;
 }
 
 .account-plan-name {
@@ -4755,22 +4786,137 @@
   .drawer-overlay.join-qr-overlay,
   .drawer-overlay.install-app-overlay {
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-start;
     align-items: center;
-    padding: max(0.75rem, env(safe-area-inset-top)) 0.75rem
-      max(0.75rem, env(safe-area-inset-bottom));
+    padding: max(0.55rem, env(safe-area-inset-top)) 0.65rem
+      max(0.65rem, env(safe-area-inset-bottom));
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .drawer-overlay.join-qr-overlay .modal-card,
   .drawer-overlay.install-app-overlay .modal-card,
   .drawer-overlay.install-app-overlay .account-modal {
-    width: min(400px, calc(100vw - 1.5rem));
-    max-width: calc(100vw - 1.5rem);
-    margin: auto;
+    width: min(400px, calc(100vw - 1.3rem));
+    max-width: calc(100vw - 1.3rem);
+    margin: auto 0;
     border-radius: 16px;
     border-left: 2px solid var(--gold-border);
-    max-height: min(88dvh, 100%);
+    max-height: none;
+  }
+
+  .drawer-overlay.install-app-overlay .account-modal {
+    width: min(420px, calc(100vw - 1.3rem));
+    max-height: min(92dvh, 100%);
+    margin-top: max(0.35rem, env(safe-area-inset-top));
+    margin-bottom: max(0.55rem, env(safe-area-inset-bottom));
+  }
+
+  .account-modal-close {
+    top: 0.55rem;
+    right: 0.55rem;
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  .account-pass-banner {
+    padding: 1rem 0.95rem 0;
+  }
+
+  .account-pass-ticket {
+    min-height: 84px;
+    grid-template-columns: 1fr 64px;
+  }
+
+  .account-pass-ticket::before,
+  .account-pass-ticket::after {
+    right: 56px;
+  }
+
+  .account-pass-ticket-main {
+    padding: 0.8rem 0.85rem;
+  }
+
+  .account-pass-ticket-main strong {
+    font-size: 1.08rem;
+  }
+
+  .account-modal-header,
+  .account-modal-header--auth {
+    padding: 0.85rem 2.75rem 0.2rem 0.95rem;
+  }
+
+  .account-modal-header h2 {
+    font-size: clamp(1.15rem, 5.2vw, 1.35rem);
+  }
+
+  .account-modal-lead {
+    font-size: 0.86rem;
+  }
+
+  .account-modal-error {
+    margin: 0.55rem 0.95rem 0;
+  }
+
+  .account-modal-form,
+  .account-signed-in,
+  .pass-modal-actions {
+    padding: 0.7rem 0.95rem calc(1.05rem + env(safe-area-inset-bottom));
+    gap: 0.65rem;
+  }
+
+  .account-benefits {
+    margin: 0.7rem 0.95rem 0;
+    gap: 0.45rem;
+  }
+
+  .pass-modal .account-benefits {
+    max-height: min(36vh, 16rem);
+  }
+
+  .account-mode-tabs button {
+    min-height: 44px;
+    padding: 0.6rem 0.5rem;
+  }
+
+  .account-field input {
+    font-size: 16px;
+    min-height: 48px;
+    padding: 0.75rem 0.85rem;
+  }
+
+  .account-password-row input,
+  .account-field-password input {
+    padding-right: 4.6rem;
+  }
+
+  .account-toggle-pw {
+    right: 0.25rem;
+    padding: 0.4rem 0.55rem;
+    font-size: 0.72rem;
+    min-height: 0;
+    min-width: 0;
+  }
+
+  .account-primary-btn,
+  .account-ghost-btn {
+    min-height: 48px;
+    font-size: 0.92rem;
+  }
+
+  .account-plan-card {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    padding: 0.8rem 0.85rem;
+  }
+
+  .account-plan-price {
+    font-size: 1.1rem;
+  }
+
+  .account-modal-footnote {
+    font-size: 0.74rem;
+    overflow-wrap: anywhere;
   }
 
   .join-qr-header {
@@ -4811,6 +4957,51 @@
   .join-url-input {
     font-size: 0.82rem;
     padding: 0.65rem 0.7rem;
+  }
+
+  .account-modal-header h2 {
+    font-size: 1.12rem;
+  }
+
+  .account-pass-ticket {
+    grid-template-columns: 1fr 56px;
+  }
+
+  .account-pass-ticket::before,
+  .account-pass-ticket::after {
+    right: 48px;
+  }
+}
+
+/* Short phones / keyboard open — keep modal usable */
+@media (max-height: 700px) {
+  .drawer-overlay.install-app-overlay {
+    justify-content: flex-start;
+    align-items: center;
+  }
+
+  .drawer-overlay.install-app-overlay .account-modal {
+    max-height: min(96dvh, 100%);
+  }
+
+  .account-modal-header h2 {
+    font-size: 1.18rem;
+  }
+
+  .account-modal-lead {
+    font-size: 0.82rem;
+    line-height: 1.35;
+  }
+
+  .pass-modal .account-benefits {
+    max-height: min(28vh, 11rem);
+  }
+
+  .account-modal-form,
+  .account-signed-in,
+  .pass-modal-actions {
+    gap: 0.55rem;
+    padding-top: 0.55rem;
   }
 }
 

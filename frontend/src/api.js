@@ -201,6 +201,23 @@ export async function createCheckoutSession() {
   return data
 }
 
+export async function startOfflineTrial() {
+  const headers = await csrfHeaders({ 'Content-Type': 'application/json' })
+  const response = await fetch(`${API_BASE}/billing/start-trial/`, {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+    body: '{}',
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const err = new Error(data.detail || 'Could not start free trial.')
+    err.code = data.code
+    throw err
+  }
+  return data
+}
+
 export async function createBillingPortalSession() {
   const headers = await csrfHeaders({ 'Content-Type': 'application/json' })
   const response = await fetch(`${API_BASE}/billing/portal/`, {

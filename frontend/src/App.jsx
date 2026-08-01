@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import gsap from 'gsap'
 import { useGSAP } from '@gsap/react'
 import AdminGate from './AdminGate'
-import { searchSongs, fetchOfflinePack, reportWrongNumber, adminMe } from './api'
+import { searchSongs, fetchOfflinePack, reportWrongNumber, adminMe, startOfflineTrial } from './api'
 import { usePresencePing } from './usePresencePing'
 import {
   FREE_FAVORITE_LIMIT,
@@ -504,6 +504,25 @@ export default function App() {
     setPassReason('')
     setAccountMode(mode)
     setShowAccount(true)
+  }
+
+  const handleStartTrialFromPass = async () => {
+    try {
+      const data = await startOfflineTrial()
+      setAccount((prev) => ({
+        ...prev,
+        authenticated: true,
+        offline_access: data.offline_access,
+        subscription: data.subscription,
+      }))
+      setShowPass(false)
+      setPassReason('')
+      setShowAccount(true)
+      showToast('Free trial started — save the offline catalog now.')
+    } catch (err) {
+      showToast(err.message || 'Could not start free trial.')
+      openAccountFromPass('register')
+    }
   }
 
   const openAccountForOffline = (reason = '') => {
@@ -1275,9 +1294,11 @@ export default function App() {
           reason={passReason}
           loggedIn={Boolean(account?.authenticated)}
           hasAccess={hasOfflineAccess}
+          trialAvailable={Boolean(account?.subscription?.trial_available)}
           onGetPass={() => openAccountFromPass('register')}
           onLogin={() => openAccountFromPass('login')}
           onManage={() => openAccountFromPass('register')}
+          onStartTrial={handleStartTrialFromPass}
         />
       ) : null}
 

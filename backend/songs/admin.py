@@ -14,10 +14,11 @@ class SubscriberProfileAdmin(admin.ModelAdmin):
         'status',
         'current_period_end',
         'manual_override_until',
+        'trial_used',
         'stripe_customer_id',
         'updated_at',
     )
-    list_filter = ('status',)
+    list_filter = ('status', 'trial_used')
     search_fields = ('user__username', 'user__email', 'stripe_customer_id', 'stripe_subscription_id')
     raw_id_fields = ('user',)
 

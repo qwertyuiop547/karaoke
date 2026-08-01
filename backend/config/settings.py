@@ -206,6 +206,7 @@ STRIPE_PUBLISHABLE_KEY = os.getenv('STRIPE_PUBLISHABLE_KEY', '').strip()
 STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET', '').strip()
 STRIPE_PRICE_ID = os.getenv('STRIPE_PRICE_ID', '').strip()
 OFFLINE_PASS_LABEL = os.getenv('OFFLINE_PASS_LABEL', 'Offline Pass · ₱149/mo')
+OFFLINE_TRIAL_DAYS = int(os.getenv('OFFLINE_TRIAL_DAYS', '2'))
 
 # SQLite: WAL + busy timeout reduces "database is locked" under concurrent reads/writes
 if USE_SQLITE:

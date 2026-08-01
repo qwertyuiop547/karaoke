@@ -127,6 +127,10 @@ class SubscriberProfile(models.Model):
         blank=True,
         help_text='Admin-granted offline access until this datetime (GCash/bank fallback).',
     )
+    trial_used = models.BooleanField(
+        default=False,
+        help_text='True after the account has consumed its one-time Offline Pass free trial.',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

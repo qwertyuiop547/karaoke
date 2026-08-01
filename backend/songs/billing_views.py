@@ -15,7 +15,12 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .entitlements import ensure_subscriber_profile, subscription_payload, user_has_offline_access
+from .entitlements import (
+    ensure_subscriber_profile,
+    start_free_trial,
+    subscription_payload,
+    user_has_offline_access,
+)
 from .models import SubscriberProfile
 from .permissions import IsStaffUser
 from .ratelimit import is_rate_limited
@@ -118,6 +123,41 @@ class BillingCheckoutView(APIView):
             )
 
         return Response({'ok': True, 'url': session.url, 'session_id': session.id})
+
+
+class BillingStartTrialView(APIView):
+    """Start the one-time 2-day Offline Pass free trial (existing accounts)."""
+
+    authentication_classes = [SessionAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if is_rate_limited(f'trial:{request.user.pk}', limit=5, window_seconds=600):
+            return Response(
+                {'detail': 'Too many trial attempts. Try again later.'},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        ok, _profile, code = start_free_trial(request.user)
+        if not ok:
+            detail = {
+                'already_active': 'Offline Pass is already active on this account.',
+                'trial_active': 'Your free trial is already running.',
+                'trial_used': 'Free trial was already used on this account. Subscribe to continue.',
+            }.get(code, 'Could not start free trial.')
+            return Response(
+                {'detail': detail, 'code': code, 'subscription': subscription_payload(request.user)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                'ok': True,
+                'message': 'Free trial started.',
+                'offline_access': user_has_offline_access(request.user),
+                'subscription': subscription_payload(request.user),
+            }
+        )
 
 
 class BillingPortalView(APIView):
@@ -347,6 +387,7 @@ class BillingSubscribersListView(APIView):
                         else None
                     ),
                     'offline_access': user_has_offline_access(user),
+                    'trial_used': bool(profile.trial_used),
                     'stripe_customer_id': profile.stripe_customer_id or '',
                 }
             )

@@ -1,0 +1,27 @@
+---
+description: Auto-deploy Karaoke app changes to Railway after completing work
+alwaysApply: true
+---
+
+# Railway auto-deploy
+
+After finishing code changes that affect the running app (frontend, backend, Dockerfile, entrypoint, config), **deploy to Railway immediately** without waiting for the user to ask.
+
+## Deploy steps
+
+1. Ensure `backend/entrypoint.sh` has LF line endings (not CRLF).
+2. From repo root, deploy with:
+
+```powershell
+$cfg = Get-Content "$env:TEMP\railway-karaoke2.json" | ConvertFrom-Json
+$env:RAILWAY_TOKEN = $cfg.projectToken
+railway up --service karaoke --detach --ci --message "<short deploy message>"
+```
+
+3. Briefly tell the user the deploy was started and the live URL: https://karaoke-production-bc45.up.railway.app
+
+## Notes
+
+- Service name: `karaoke`
+- Do not skip deploy for UI/API/product changes; only skip for docs-only or local-only edits that never ship.
+- Do not commit/push unless the user asks; deploy uploads local files via `railway up`.

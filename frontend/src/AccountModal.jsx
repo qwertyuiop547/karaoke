@@ -2,11 +2,26 @@ import { useState } from 'react'
 import {
   createBillingPortalSession,
   createCheckoutSession,
+  startOfflineTrial,
   subscriberLogin,
   subscriberLogout,
   subscriberRegister,
 } from './api'
-import { PASS_LABEL, PASS_PERIOD, PASS_PRICE } from './passBenefits'
+import { PASS_LABEL, PASS_PERIOD, PASS_PRICE, TRIAL_DAYS } from './passBenefits'
+
+function formatTrialEnd(iso) {
+  if (!iso) return ''
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    })
+  } catch {
+    return ''
+  }
+}
 
 /**
  * Sign up / log in / checkout — opened after Pass modal Get Pass / Log in.
@@ -32,6 +47,10 @@ export default function AccountModal({
 
   const loggedIn = Boolean(account?.authenticated)
   const hasAccess = Boolean(account?.offline_access)
+  const sub = account?.subscription || {}
+  const isTrialing = Boolean(sub.is_trialing)
+  const trialAvailable = Boolean(sub.trial_available)
+  const trialEndLabel = formatTrialEnd(sub.current_period_end)
 
   const handleAuth = async (e) => {
     e.preventDefault()
@@ -54,6 +73,24 @@ export default function AccountModal({
       setMode('subscribe')
     } catch (err) {
       setError(err.message || 'Authentication failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleStartTrial = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      const data = await startOfflineTrial()
+      onAccountChange?.({
+        ...account,
+        authenticated: true,
+        offline_access: data.offline_access,
+        subscription: data.subscription,
+      })
+    } catch (err) {
+      setError(err.message || 'Could not start free trial.')
     } finally {
       setBusy(false)
     }
@@ -107,20 +144,34 @@ export default function AccountModal({
   }
 
   const title = hasAccess
-    ? 'Offline unlocked'
+    ? isTrialing
+      ? 'Free trial active'
+      : 'Offline unlocked'
     : loggedIn
-      ? 'Complete your Offline Pass'
+      ? trialAvailable
+        ? `Start ${TRIAL_DAYS}-day free trial`
+        : 'Subscribe to Offline Pass'
       : mode === 'register'
         ? 'Create your account'
         : 'Log in to continue'
 
   const lead = hasAccess
-    ? 'Save the full song catalog on this device — searchable without Wi‑Fi.'
+    ? isTrialing
+      ? `Trial ends ${trialEndLabel || 'in 2 days'}. Save the catalog now — subscribe para tuloy after.`
+      : 'Save the full song catalog on this device — searchable without Wi‑Fi.'
     : loggedIn
-      ? 'Account ready — continue to checkout para ma-activate ang Offline Pass.'
+      ? trialAvailable
+        ? `Walang bayad for ${TRIAL_DAYS} days. One trial per account.`
+        : 'Trial used na — continue with checkout para ma-activate ang Offline Pass.'
       : mode === 'register'
-        ? 'Sign up first, then checkout for Offline Pass.'
-        : 'Log in with your existing account to get Offline Pass.'
+        ? `Sign up to start your ${TRIAL_DAYS}-day free trial automatically.`
+        : 'Log in with your existing account.'
+
+  const statusLine = hasAccess
+    ? isTrialing
+      ? `Free trial · ends ${trialEndLabel || 'soon'}`
+      : 'Offline Pass active'
+    : 'No active subscription'
 
   return (
     <div className="drawer-overlay install-app-overlay" onClick={onClose}>
@@ -150,7 +201,7 @@ export default function AccountModal({
 
         <header className="account-modal-header account-modal-header--auth">
           <p className="account-modal-kicker">
-            {hasAccess ? 'Active' : loggedIn ? 'Checkout' : 'Account'}
+            {hasAccess ? (isTrialing ? 'Trial' : 'Active') : loggedIn ? 'Account' : 'Account'}
           </p>
           <h2 id="account-modal-title">{title}</h2>
           <p className="account-modal-lead">{lead}</p>
@@ -218,6 +269,7 @@ export default function AccountModal({
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   minLength={8}
+                  enterKeyHint={mode === 'register' ? 'next' : 'done'}
                 />
                 <button
                   type="button"
@@ -248,11 +300,17 @@ export default function AccountModal({
             ) : null}
 
             <button type="submit" className="account-primary-btn" disabled={busy}>
-              {busy ? 'Please wait…' : mode === 'register' ? 'Create account' : 'Log in'}
+              {busy
+                ? 'Please wait…'
+                : mode === 'register'
+                  ? `Sign up · ${TRIAL_DAYS}-day trial`
+                  : 'Log in'}
             </button>
 
             <p className="account-modal-footnote">
-              Next: checkout for {PASS_LABEL}
+              {mode === 'register'
+                ? `Free for ${TRIAL_DAYS} days, then ${PASS_LABEL}`
+                : `Then unlock Offline Pass · ${PASS_PRICE}${PASS_PERIOD}`}
             </p>
           </form>
         ) : (
@@ -261,7 +319,7 @@ export default function AccountModal({
               <span className="account-status-dot" aria-hidden="true" />
               <div>
                 <strong>{account.email || account.username}</strong>
-                <p>{hasAccess ? 'Offline Pass active' : 'No active subscription'}</p>
+                <p>{statusLine}</p>
               </div>
             </div>
 
@@ -275,34 +333,59 @@ export default function AccountModal({
                 >
                   {syncingOffline ? 'Downloading…' : 'Save Offline Catalog'}
                 </button>
-                <button
-                  type="button"
-                  className="account-ghost-btn"
-                  onClick={handlePortal}
-                  disabled={busy}
-                >
-                  Manage billing
-                </button>
+                {isTrialing ? (
+                  <button
+                    type="button"
+                    className="account-ghost-btn"
+                    onClick={handleCheckout}
+                    disabled={busy}
+                  >
+                    {busy ? 'Redirecting…' : 'Subscribe now'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="account-ghost-btn"
+                    onClick={handlePortal}
+                    disabled={busy}
+                  >
+                    Manage billing
+                  </button>
+                )}
               </>
             ) : (
               <>
                 <div className="account-plan-card">
                   <div>
                     <p className="account-plan-name">Offline Pass</p>
-                    <p className="account-plan-desc">Offline catalog + unlimited favorites</p>
+                    <p className="account-plan-desc">
+                      {trialAvailable
+                        ? `${TRIAL_DAYS}-day free trial, then ${PASS_PRICE}${PASS_PERIOD}`
+                        : 'Offline catalog + unlimited favorites'}
+                    </p>
                   </div>
                   <p className="account-plan-price">
                     {PASS_PRICE}
                     <em>{PASS_PERIOD}</em>
                   </p>
                 </div>
+                {trialAvailable ? (
+                  <button
+                    type="button"
+                    className="account-primary-btn"
+                    onClick={handleStartTrial}
+                    disabled={busy}
+                  >
+                    {busy ? 'Starting…' : `Start ${TRIAL_DAYS}-day free trial`}
+                  </button>
+                ) : null}
                 <button
                   type="button"
-                  className="account-primary-btn"
+                  className={trialAvailable ? 'account-ghost-btn' : 'account-primary-btn'}
                   onClick={handleCheckout}
                   disabled={busy}
                 >
-                  {busy ? 'Redirecting…' : 'Continue to checkout'}
+                  {busy ? 'Redirecting…' : trialAvailable ? 'Skip · Subscribe now' : 'Continue to checkout'}
                 </button>
                 <p className="account-modal-footnote">
                   Or pay via GCash and ask admin to activate your email.
