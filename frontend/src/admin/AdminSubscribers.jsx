@@ -1,7 +1,10 @@
 import {
   adminActivateSubscriber,
   adminModerateSubscriber,
+  deleteReferralCampaign,
+  fetchReferralCampaigns,
   listSubscribers,
+  saveReferralCampaign,
 } from '../api'
 import { useEffect, useMemo, useState } from 'react'
 
@@ -44,6 +47,23 @@ export default function AdminSubscribers({ onToast }) {
   const [filter, setFilter] = useState('all')
   const [openMenuId, setOpenMenuId] = useState(null)
 
+  const [campaigns, setCampaigns] = useState([])
+  const [campCode, setCampCode] = useState('')
+  const [campTitle, setCampTitle] = useState('')
+  const [campDays, setCampDays] = useState(3)
+  const [campMax, setCampMax] = useState(50)
+  const [campUntil, setCampUntil] = useState('')
+  const [campActive, setCampActive] = useState(true)
+
+  const refreshCampaigns = async () => {
+    try {
+      const data = await fetchReferralCampaigns()
+      setCampaigns(data.results || [])
+    } catch {
+      setCampaigns([])
+    }
+  }
+
   const refresh = async () => {
     setLoading(true)
     setError('')
@@ -60,7 +80,69 @@ export default function AdminSubscribers({ onToast }) {
 
   useEffect(() => {
     refresh()
+    refreshCampaigns()
   }, [])
+
+  const handleSaveCampaign = async (e) => {
+    e.preventDefault()
+    if (!campCode.trim()) return
+    setBusy(true)
+    try {
+      const res = await saveReferralCampaign({
+        code: campCode.trim(),
+        title: campTitle.trim(),
+        bonus_days: parseInt(campDays, 10) || 3,
+        max_redeems: parseInt(campMax, 10) || 0,
+        valid_until: campUntil ? new Date(campUntil).toISOString() : null,
+        is_active: campActive,
+      })
+      onToast?.(res.message || 'Campaign saved!')
+      setCampCode('')
+      setCampTitle('')
+      setCampDays(3)
+      setCampMax(50)
+      setCampUntil('')
+      await refreshCampaigns()
+    } catch (err) {
+      onToast?.(err.message || 'Could not save campaign.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleToggleCampaign = async (item) => {
+    setBusy(true)
+    try {
+      await saveReferralCampaign({
+        code: item.code,
+        title: item.title,
+        bonus_days: item.bonus_days,
+        max_redeems: item.max_redeems,
+        valid_until: item.valid_until,
+        is_active: !item.is_active,
+      })
+      onToast?.(`Toggled ${item.code} -> ${!item.is_active ? 'Active' : 'Inactive'}`)
+      await refreshCampaigns()
+    } catch (err) {
+      onToast?.(err.message || 'Toggle failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleDeleteCampaign = async (item) => {
+    if (!window.confirm(`Delete promo code ${item.code}?`)) return
+    setBusy(true)
+    try {
+      await deleteReferralCampaign(item.id)
+      onToast?.(`Deleted promo code ${item.code}`)
+      await refreshCampaigns()
+    } catch (err) {
+      onToast?.(err.message || 'Delete failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   useEffect(() => {
     if (!openMenuId) return undefined
@@ -230,6 +312,103 @@ export default function AdminSubscribers({ onToast }) {
             {busy ? 'Saving…' : 'Activate Pass'}
           </button>
         </form>
+      </section>
+
+      <section className="admin-pass-card admin-referral-campaigns-card">
+        <div className="admin-pass-card-top">
+          <div className="admin-pass-badge" aria-hidden="true">🎁</div>
+          <div className="admin-pass-copy">
+            <h3 className="admin-pass-title">Referral & Promo Campaigns</h3>
+            <p className="admin-pass-lead">
+              Set bonus days, max redeem count limits, and expiration dates for promo codes.
+            </p>
+          </div>
+        </div>
+
+        <form className="admin-pass-form admin-campaign-form" onSubmit={handleSaveCampaign}>
+          <label className="admin-field">
+            <span>Promo Code</span>
+            <input
+              type="text"
+              value={campCode}
+              onChange={(e) => setCampCode(e.target.value)}
+              placeholder="e.g. WELCOME50"
+              required
+            />
+          </label>
+          <label className="admin-field">
+            <span>Bonus Days</span>
+            <input
+              type="number"
+              min="1"
+              max="365"
+              value={campDays}
+              onChange={(e) => setCampDays(e.target.value)}
+              required
+            />
+          </label>
+          <label className="admin-field">
+            <span>Max Redeems (0 = ∞)</span>
+            <input
+              type="number"
+              min="0"
+              value={campMax}
+              onChange={(e) => setCampMax(e.target.value)}
+            />
+          </label>
+          <label className="admin-field">
+            <span>Expiration Date (Optional)</span>
+            <input
+              type="date"
+              value={campUntil}
+              onChange={(e) => setCampUntil(e.target.value)}
+            />
+          </label>
+          <button type="submit" className="admin-action-btn admin-pass-submit" disabled={busy}>
+            {busy ? 'Saving…' : 'Save Campaign Code'}
+          </button>
+        </form>
+
+        {campaigns.length ? (
+          <div className="admin-campaign-list">
+            <h4>Active & Managed Campaigns ({campaigns.length})</h4>
+            <div className="admin-campaign-grid">
+              {campaigns.map((c) => (
+                <div key={c.id} className={`admin-campaign-item ${!c.is_active ? 'inactive' : ''}`}>
+                  <div className="admin-campaign-head">
+                    <strong>{c.code}</strong>
+                    <span className={`admin-campaign-pill ${c.is_valid ? 'valid' : 'invalid'}`}>
+                      {c.is_valid ? 'Active' : c.status_reason}
+                    </span>
+                  </div>
+                  <div className="admin-campaign-body">
+                    <p>🎁 <strong>+{c.bonus_days} days</strong> bonus trial</p>
+                    <p>👥 Redeems: <strong>{c.redeem_count} / {c.max_redeems || '∞'}</strong></p>
+                    <p>📅 Valid until: {c.valid_until ? formatDate(c.valid_until) : 'No expiry'}</p>
+                  </div>
+                  <div className="admin-campaign-actions">
+                    <button
+                      type="button"
+                      className="admin-action-btn ghost"
+                      onClick={() => handleToggleCampaign(c)}
+                      disabled={busy}
+                    >
+                      {c.is_active ? 'Disable' : 'Enable'}
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-action-btn danger"
+                      onClick={() => handleDeleteCampaign(c)}
+                      disabled={busy}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <div className="admin-sub-toolbar">

@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 
 class Song(models.Model):
@@ -153,6 +154,15 @@ class SubscriberProfile(models.Model):
     )
     referral_count = models.PositiveIntegerField(default=0)
     referral_days_earned = models.PositiveIntegerField(default=0)
+    referral_max_redeems = models.PositiveIntegerField(
+        default=0,
+        help_text='Max redeems allowed for this user code (0 = unlimited).',
+    )
+    referral_valid_until = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='Optional expiration date for this user referral code.',
+    )
     is_banned = models.BooleanField(
         default=False,
         db_index=True,
@@ -166,6 +176,37 @@ class SubscriberProfile(models.Model):
 
     def __str__(self):
         return f'{self.user} ({self.status})'
+
+
+class ReferralCampaign(models.Model):
+    """
+    Admin-managed referral & promo campaigns.
+    Admin can set bonus trial days, max redeem count limit, expiration date, and active toggle.
+    """
+    code = models.CharField(max_length=64, unique=True, db_index=True)
+    title = models.CharField(max_length=128, blank=True, default='')
+    bonus_days = models.PositiveIntegerField(default=3, help_text='Trial bonus days granted on redeem.')
+    max_redeems = models.PositiveIntegerField(default=0, help_text='Max total redeems allowed (0 = unlimited).')
+    redeem_count = models.PositiveIntegerField(default=0, help_text='Current total redeems.')
+    valid_until = models.DateTimeField(null=True, blank=True, help_text='Expiration date for this campaign.')
+    is_active = models.BooleanField(default=True, help_text='Enable/disable code.')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.code} (+{self.bonus_days}d, {self.redeem_count}/{self.max_redeems or "∞"})'
+
+    def check_validity(self):
+        if not self.is_active:
+            return False, 'This referral campaign is inactive.'
+        if self.valid_until and timezone.now() > self.valid_until:
+            return False, 'This referral code has expired.'
+        if self.max_redeems > 0 and self.redeem_count >= self.max_redeems:
+            return False, 'This referral code has reached its maximum redeem limit.'
+        return True, 'Valid'
 
 
 class CatalogSeedLog(models.Model):

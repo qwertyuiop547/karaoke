@@ -34,7 +34,7 @@ from .entitlements import (
     trial_days,
     user_has_offline_access,
 )
-from .models import SubscriberProfile
+from .models import ReferralCampaign, SubscriberProfile
 from .permissions import IsStaffUser
 from .ratelimit import is_rate_limited
 
@@ -585,3 +585,83 @@ class BillingSubscribersListView(APIView):
                 }
             )
         return Response({'count': len(results), 'results': results})
+
+
+class ReferralCampaignAdminView(APIView):
+    """Staff: List, create, configure, and delete Referral & Promo Campaigns."""
+
+    authentication_classes = [SessionAuthentication]
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        campaigns = ReferralCampaign.objects.all()
+        results = []
+        for c in campaigns:
+            valid, reason = c.check_validity()
+            results.append({
+                'id': c.id,
+                'code': c.code,
+                'title': c.title,
+                'bonus_days': c.bonus_days,
+                'max_redeems': c.max_redeems,
+                'redeem_count': c.redeem_count,
+                'valid_until': c.valid_until.isoformat() if c.valid_until else None,
+                'is_active': c.is_active,
+                'is_valid': valid,
+                'status_reason': reason,
+                'created_at': c.created_at.isoformat(),
+            })
+        return Response({'count': len(results), 'results': results})
+
+    def post(self, request):
+        code = (request.data.get('code') or '').strip().upper()
+        if not code:
+            return Response({'detail': 'Campaign code is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        title = (request.data.get('title') or '').strip()
+        try:
+            bonus_days = max(1, int(request.data.get('bonus_days') or 3))
+        except (TypeError, ValueError):
+            bonus_days = 3
+
+        try:
+            max_redeems = max(0, int(request.data.get('max_redeems') or 0))
+        except (TypeError, ValueError):
+            max_redeems = 0
+
+        valid_until_raw = request.data.get('valid_until')
+        valid_until = parse_datetime(valid_until_raw) if valid_until_raw else None
+
+        is_active = bool(request.data.get('is_active', True))
+
+        campaign, created = ReferralCampaign.objects.get_or_create(code=code)
+        campaign.title = title
+        campaign.bonus_days = bonus_days
+        campaign.max_redeems = max_redeems
+        campaign.valid_until = valid_until
+        campaign.is_active = is_active
+        campaign.save()
+
+        return Response({
+            'ok': True,
+            'message': 'Referral campaign created.' if created else 'Referral campaign updated.',
+            'campaign': {
+                'id': campaign.id,
+                'code': campaign.code,
+                'title': campaign.title,
+                'bonus_days': campaign.bonus_days,
+                'max_redeems': campaign.max_redeems,
+                'redeem_count': campaign.redeem_count,
+                'valid_until': campaign.valid_until.isoformat() if campaign.valid_until else None,
+                'is_active': campaign.is_active,
+            }
+        })
+
+    def delete(self, request):
+        campaign_id = request.data.get('id') or request.query_params.get('id')
+        if not campaign_id:
+            return Response({'detail': 'Campaign ID required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        campaign = get_object_or_404(ReferralCampaign, pk=campaign_id)
+        campaign.delete()
+        return Response({'ok': True, 'message': 'Referral campaign deleted.'})

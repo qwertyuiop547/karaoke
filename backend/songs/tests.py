@@ -536,3 +536,61 @@ class ReferralSystemTests(TestCase):
         self.assertTrue(res.data['ok'])
 
 
+class ReferralCampaignTests(TestCase):
+    def setUp(self):
+        from django.core import mail
+        mail.outbox = []
+        self.admin = User.objects.create_superuser('admin_campaign', 'admin@example.com', 'pass123')
+        self.user1 = User.objects.create_user('camp_user1', 'u1@example.com', 'pass123')
+        self.user2 = User.objects.create_user('camp_user2', 'u2@example.com', 'pass123')
+
+    def test_admin_create_campaign_api(self):
+        self.client.force_login(self.admin)
+        res = self.client.post('/api/billing/admin-referral-campaigns/', {
+            'code': 'PROMO7',
+            'title': '7 Days Promo',
+            'bonus_days': 7,
+            'max_redeems': 5,
+        })
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.data['ok'])
+        self.assertEqual(res.data['campaign']['code'], 'PROMO7')
+
+    def test_campaign_redeem_limit(self):
+        from .models import ReferralCampaign
+        from .entitlements import apply_referral
+
+        ReferralCampaign.objects.create(
+            code='LIMIT1',
+            bonus_days=5,
+            max_redeems=1,
+            is_active=True,
+        )
+
+        ok1, msg1 = apply_referral(self.user1, 'LIMIT1')
+        self.assertTrue(ok1)
+        self.assertIn('+5 days', msg1)
+
+        ok2, msg2 = apply_referral(self.user2, 'LIMIT1')
+        self.assertFalse(ok2)
+        self.assertIn('maximum redeem limit', msg2)
+
+    def test_campaign_expired(self):
+        from .models import ReferralCampaign
+        from .entitlements import apply_referral
+        from django.utils import timezone
+        from datetime import timedelta
+
+        ReferralCampaign.objects.create(
+            code='EXPIRED1',
+            bonus_days=10,
+            valid_until=timezone.now() - timedelta(days=1),
+            is_active=True,
+        )
+
+        ok, msg = apply_referral(self.user1, 'EXPIRED1')
+        self.assertFalse(ok)
+        self.assertIn('has expired', msg)
+
+
+

@@ -9,8 +9,7 @@ from .email_verify import (
     normalize_device_id,
     send_pass_activated_email,
 )
-from .models import SubscriberProfile, TrialDevice
-
+from .models import ReferralCampaign, SubscriberProfile, TrialDevice
 
 ACTIVE_STATUSES = {
     SubscriberProfile.Status.ACTIVE,
@@ -247,8 +246,8 @@ def grant_manual_trial(user):
 
 def apply_referral(new_user, referral_code: str) -> tuple[bool, str]:
     """
-    Applies referral code to new_user:
-    Both referrer and referee receive +3 days trial extension!
+    Applies referral or promo campaign code to new_user.
+    Respects admin campaign limits (bonus_days, max_redeems, valid_until, is_active).
     Returns (ok, message).
     """
     code = (referral_code or '').strip().upper()
@@ -259,6 +258,35 @@ def apply_referral(new_user, referral_code: str) -> tuple[bool, str]:
     if new_profile.referred_by_id:
         return False, 'Referral code already applied on this account.'
 
+    now = timezone.now()
+
+    # 1. Check if code matches an Admin ReferralCampaign / Promo Code
+    campaign = ReferralCampaign.objects.filter(code__iexact=code).first()
+    if campaign:
+        valid, reason = campaign.check_validity()
+        if not valid:
+            return False, reason
+
+        bonus_days = campaign.bonus_days or 3
+
+        # Give Referee bonus
+        if new_profile.current_period_end and new_profile.current_period_end > now:
+            new_profile.current_period_end += timedelta(days=bonus_days)
+        else:
+            new_profile.current_period_end = now + timedelta(days=trial_days() + bonus_days)
+
+        new_profile.status = SubscriberProfile.Status.TRIALING
+        new_profile.trial_used = True
+        new_profile.save(update_fields=['current_period_end', 'status', 'trial_used', 'updated_at'])
+
+        # Increment campaign redeem count
+        campaign.redeem_count += 1
+        campaign.save(update_fields=['redeem_count', 'updated_at'])
+
+        send_pass_activated_email(new_user, until_date=new_profile.current_period_end)
+        return True, f'Promo code applied! You received +{bonus_days} days trial extension!'
+
+    # 2. Check User Referral Code
     referrer_profile = (
         SubscriberProfile.objects.filter(referral_code__iexact=code)
         .select_related('user')
@@ -270,14 +298,22 @@ def apply_referral(new_user, referral_code: str) -> tuple[bool, str]:
     if referrer_profile.user_id == new_user.id:
         return False, 'You cannot refer yourself.'
 
-    now = timezone.now()
+    if referrer_profile.referral_valid_until and now > referrer_profile.referral_valid_until:
+        return False, 'This referral code has expired.'
+    if (
+        referrer_profile.referral_max_redeems > 0
+        and referrer_profile.referral_count >= referrer_profile.referral_max_redeems
+    ):
+        return False, 'This referral code has reached its maximum redeem limit.'
 
-    # 1. Give Referee (new_user) +3 days bonus
+    bonus_days = REFERRAL_BONUS_DAYS
+
+    # Give Referee +3 days bonus
     new_profile.referred_by = referrer_profile.user
     if new_profile.current_period_end and new_profile.current_period_end > now:
-        new_profile.current_period_end += timedelta(days=REFERRAL_BONUS_DAYS)
+        new_profile.current_period_end += timedelta(days=bonus_days)
     else:
-        new_profile.current_period_end = now + timedelta(days=trial_days() + REFERRAL_BONUS_DAYS)
+        new_profile.current_period_end = now + timedelta(days=trial_days() + bonus_days)
 
     new_profile.status = SubscriberProfile.Status.TRIALING
     new_profile.trial_used = True
@@ -285,17 +321,17 @@ def apply_referral(new_user, referral_code: str) -> tuple[bool, str]:
         update_fields=['referred_by', 'current_period_end', 'status', 'trial_used', 'updated_at']
     )
 
-    # 2. Give Referrer +3 days bonus & update counters
+    # Give Referrer +3 days bonus & update counters
     referrer_profile.referral_count += 1
-    referrer_profile.referral_days_earned += REFERRAL_BONUS_DAYS
+    referrer_profile.referral_days_earned += bonus_days
 
     if referrer_profile.manual_override_until and referrer_profile.manual_override_until > now:
-        referrer_profile.manual_override_until += timedelta(days=REFERRAL_BONUS_DAYS)
+        referrer_profile.manual_override_until += timedelta(days=bonus_days)
     elif referrer_profile.current_period_end and referrer_profile.current_period_end > now:
-        referrer_profile.current_period_end += timedelta(days=REFERRAL_BONUS_DAYS)
+        referrer_profile.current_period_end += timedelta(days=bonus_days)
     else:
         referrer_profile.status = SubscriberProfile.Status.TRIALING
-        referrer_profile.current_period_end = now + timedelta(days=REFERRAL_BONUS_DAYS)
+        referrer_profile.current_period_end = now + timedelta(days=bonus_days)
 
     referrer_profile.save(
         update_fields=[
@@ -308,7 +344,7 @@ def apply_referral(new_user, referral_code: str) -> tuple[bool, str]:
         ]
     )
 
-    return True, f'Referral applied! Both you and your friend got +{REFERRAL_BONUS_DAYS} days trial extension!'
+    return True, f'Referral applied! Both you and your friend got +{bonus_days} days trial extension!'
 
 
 def subscription_payload(user) -> dict:

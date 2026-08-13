@@ -21,6 +21,7 @@ from .billing_views import (
     BillingStartTrialView,
     BillingSubscribersListView,
     BillingWebhookView,
+    ReferralCampaignAdminView,
 )
 from .presence_views import PresenceOnlineView, PresencePingView
 
@@ -72,6 +73,11 @@ urlpatterns = [
         'billing/subscribers/',
         BillingSubscribersListView.as_view(),
         name='billing-subscribers',
+    ),
+    path(
+        'billing/admin-referral-campaigns/',
+        ReferralCampaignAdminView.as_view(),
+        name='billing-admin-referral-campaigns',
     ),
     path('presence/ping/', PresencePingView.as_view(), name='presence-ping'),
     path('presence/online/', PresenceOnlineView.as_view(), name='presence-online'),

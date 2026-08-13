@@ -592,3 +592,44 @@ export async function fetchAnalyticsSummary({ signal } = {}) {
   }
   return response.json()
 }
+
+export async function fetchReferralCampaigns({ signal } = {}) {
+  const response = await fetch(`${API_BASE}/billing/admin-referral-campaigns/`, {
+    credentials: 'include',
+    signal,
+  })
+  if (!response.ok) {
+    throw new Error(await parseError(response, 'Could not load referral campaigns.'))
+  }
+  return response.json()
+}
+
+export async function saveReferralCampaign(payload) {
+  const headers = await csrfHeaders({ 'Content-Type': 'application/json' })
+  const response = await fetch(`${API_BASE}/billing/admin-referral-campaigns/`, {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+    body: JSON.stringify(payload),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data.detail || 'Could not save referral campaign.')
+  }
+  return data
+}
+
+export async function deleteReferralCampaign(id) {
+  const headers = await csrfHeaders({ 'Content-Type': 'application/json' })
+  const response = await fetch(`${API_BASE}/billing/admin-referral-campaigns/`, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers,
+    body: JSON.stringify({ id }),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data.detail || 'Could not delete referral campaign.')
+  }
+  return data
+}
