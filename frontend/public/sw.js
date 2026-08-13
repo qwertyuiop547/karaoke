@@ -1,5 +1,7 @@
 /* Offline app shell + selective API cache */
-const CACHE_VERSION = 'v4'
+// Bump this when cache rules change so a previously cached protected response
+// is deleted during activation.
+const CACHE_VERSION = 'v6'
 const SHELL_CACHE = `platino-shell-${CACHE_VERSION}`
 const API_CACHE = `platino-api-${CACHE_VERSION}`
 const APP_SHELL = [
@@ -36,8 +38,15 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url)
 
-  // Network-first for safe public song reads only (not auth/admin/mutations)
-  if (url.pathname.startsWith('/api/songs/') && !url.pathname.includes('upload-csv')) {
+  // Network-first for safe *public* song reads only. The offline pack is a
+  // protected entitlement endpoint, so it must never be stored in Cache
+  // Storage or be available after a Pass expires.
+  const isProtectedOfflinePack = url.pathname === '/api/songs/offline-pack/'
+  if (
+    url.pathname.startsWith('/api/songs/') &&
+    !url.pathname.includes('upload-csv') &&
+    !isProtectedOfflinePack
+  ) {
     event.respondWith(
       fetch(request)
         .then((response) => {

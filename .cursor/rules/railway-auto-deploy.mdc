@@ -10,11 +10,12 @@ After finishing code changes that affect the running app (frontend, backend, Doc
 ## Deploy steps
 
 1. Ensure `backend/entrypoint.sh` has LF line endings (not CRLF).
-2. From repo root, deploy with:
+2. From repo root, deploy with account API token (not project token):
 
 ```powershell
 $cfg = Get-Content "$env:TEMP\railway-karaoke2.json" | ConvertFrom-Json
-$env:RAILWAY_TOKEN = $cfg.projectToken
+Remove-Item Env:RAILWAY_TOKEN -ErrorAction SilentlyContinue
+$env:RAILWAY_API_TOKEN = $cfg.apiToken
 railway up --service karaoke --detach --ci --message "<short deploy message>"
 ```
 
@@ -22,6 +23,8 @@ railway up --service karaoke --detach --ci --message "<short deploy message>"
 
 ## Notes
 
+- Auth env: `RAILWAY_API_TOKEN` (account token). Do **not** set `RAILWAY_TOKEN` with this value — it will fail as Unauthorized.
+- Token is stored locally in `%TEMP%\railway-karaoke2.json` as `apiToken` — never commit tokens to git.
 - Service name: `karaoke`
 - Do not skip deploy for UI/API/product changes; only skip for docs-only or local-only edits that never ship.
 - Do not commit/push unless the user asks; deploy uploads local files via `railway up`.

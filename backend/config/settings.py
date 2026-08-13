@@ -1,6 +1,11 @@
 from pathlib import Path
+import mimetypes
 import os
 from dotenv import load_dotenv
+
+# PWA: browsers require a proper manifest MIME type (WhiteNoise uses mimetypes).
+mimetypes.add_type('application/manifest+json', '.webmanifest')
+mimetypes.add_type('application/manifest+json', '.webmanifest', strict=True)
 
 load_dotenv(Path(__file__).resolve().parent.parent.parent / '.env')
 
@@ -119,6 +124,9 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 FRONTEND_DIST = BASE_DIR / 'frontend_dist'
 # Vite build is served from site root via WhiteNoise (index.html + /assets/*).
 WHITENOISE_ROOT = FRONTEND_DIST if FRONTEND_DIST.is_dir() else None
+WHITENOISE_MIMETYPES = {
+    '.webmanifest': 'application/manifest+json',
+}
 STORAGES = {
     'default': {
         'BACKEND': 'django.core.files.storage.FileSystemStorage',
@@ -206,7 +214,32 @@ STRIPE_PUBLISHABLE_KEY = os.getenv('STRIPE_PUBLISHABLE_KEY', '').strip()
 STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET', '').strip()
 STRIPE_PRICE_ID = os.getenv('STRIPE_PRICE_ID', '').strip()
 OFFLINE_PASS_LABEL = os.getenv('OFFLINE_PASS_LABEL', 'Offline Pass · ₱149/mo')
-OFFLINE_TRIAL_DAYS = int(os.getenv('OFFLINE_TRIAL_DAYS', '2'))
+OFFLINE_TRIAL_DAYS = int(os.getenv('OFFLINE_TRIAL_DAYS', '3'))
+# Manual/local free trial (no Stripe). Default ON — PH has no Stripe for many accounts.
+ALLOW_LOCAL_TRIAL = os.getenv('ALLOW_LOCAL_TRIAL', 'true').strip()
+REQUIRE_EMAIL_VERIFY_FOR_TRIAL = os.getenv(
+    'REQUIRE_EMAIL_VERIFY_FOR_TRIAL', 'false'
+).lower() in {'1', 'true', 'yes', 'on'}
+EMAIL_INCLUDE_LINK_IN_API = os.getenv('EMAIL_INCLUDE_LINK_IN_API', 'false').lower() in {
+    '1',
+    'true',
+    'yes',
+    'on',
+}
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'Platino Songbook <noreply@platino.local>')
+EMAIL_HOST = os.getenv('EMAIL_HOST', '').strip()
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587') or 587)
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '').strip()
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '').strip()
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'true').lower() in {'1', 'true', 'yes', 'on'}
+EMAIL_TIMEOUT = int(os.getenv('EMAIL_TIMEOUT', '8') or 8)
+if EMAIL_HOST:
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+else:
+    EMAIL_BACKEND = os.getenv(
+        'EMAIL_BACKEND',
+        'django.core.mail.backends.console.EmailBackend',
+    )
 
 # SQLite: WAL + busy timeout reduces "database is locked" under concurrent reads/writes
 if USE_SQLITE:

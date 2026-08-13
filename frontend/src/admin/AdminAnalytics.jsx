@@ -1,6 +1,26 @@
 import { useEffect, useState } from 'react'
 import { fetchAnalyticsSummary } from '../api'
 
+function formatRefreshWhen(iso) {
+  if (!iso) return '—'
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    })
+  } catch {
+    return iso.slice(0, 16).replace('T', ' ')
+  }
+}
+
+function sourceLabel(source) {
+  if (source === 'csv_upload') return 'CSV upload'
+  if (source === 'seed_command') return 'Seed command'
+  return source || 'Refresh'
+}
+
 export default function AdminAnalytics() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -30,6 +50,14 @@ export default function AdminAnalytics() {
     }
   }, [])
 
+  const refresh = data?.catalog_refresh?.latest
+  const recentRefreshes = data?.catalog_refresh?.recent || []
+  const hasRefreshActivity =
+    refresh &&
+    (refresh.songs_created > 0 ||
+      refresh.songs_updated > 0 ||
+      refresh.songs_deleted > 0)
+
   return (
     <div className="admin-panel">
       <div className="admin-panel-head">
@@ -46,6 +74,44 @@ export default function AdminAnalytics() {
 
       {data ? (
         <>
+          {refresh ? (
+            <div
+              className={`admin-catalog-refresh-banner ${hasRefreshActivity ? 'has-changes' : ''}`}
+              role="status"
+            >
+              <div>
+                <strong>Catalog refresh</strong>
+                <span>
+                  {sourceLabel(refresh.source)} · {formatRefreshWhen(refresh.created_at)}
+                  {refresh.note ? ` · ${refresh.note}` : ''}
+                </span>
+              </div>
+              <div className="admin-catalog-refresh-stats">
+                <span>
+                  <em>+{refresh.songs_created || 0}</em> new
+                </span>
+                <span>
+                  <em>~{refresh.songs_updated || 0}</em> updated
+                </span>
+                {refresh.songs_deleted ? (
+                  <span>
+                    <em>-{refresh.songs_deleted}</em> deleted
+                  </span>
+                ) : null}
+                <span>
+                  <em>{refresh.songs_total?.toLocaleString?.() ?? refresh.songs_total}</em> total
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="admin-catalog-refresh-banner is-empty" role="status">
+              <div>
+                <strong>No catalog refresh logged yet</strong>
+                <span>Run seed_songs or upload CSV to track changes here.</span>
+              </div>
+            </div>
+          )}
+
           <div className="admin-online-stats admin-analytics-stats">
             <div className="admin-online-stat">
               <strong>{data.song_count?.toLocaleString?.() ?? data.song_count}</strong>
@@ -94,6 +160,26 @@ export default function AdminAnalytics() {
                 {!data.top_reported?.length ? <li className="muted">No reports yet.</li> : null}
               </ul>
             </section>
+
+            {recentRefreshes.length > 0 ? (
+              <section className="admin-analytics-card admin-analytics-card-wide">
+                <h3>Recent catalog refreshes</h3>
+                <ul className="admin-refresh-log">
+                  {recentRefreshes.map((row) => (
+                    <li key={row.id}>
+                      <span>
+                        {sourceLabel(row.source)} · {formatRefreshWhen(row.created_at)}
+                        {row.note ? ` · ${row.note}` : ''}
+                      </span>
+                      <strong>
+                        +{row.songs_created} · ~{row.songs_updated}
+                        {row.songs_deleted ? ` · -${row.songs_deleted}` : ''}
+                      </strong>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
           </div>
         </>
       ) : null}

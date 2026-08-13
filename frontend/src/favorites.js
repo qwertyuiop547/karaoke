@@ -1,7 +1,7 @@
 const FAVORITES_KEY = 'platino_favorites_v1'
 
 /** Free saves without Offline Pass. Pass unlocks unlimited favorites. */
-export const FREE_FAVORITE_LIMIT = 10
+export const FREE_FAVORITE_LIMIT = 15
 
 function readFavorites() {
   try {
@@ -68,4 +68,17 @@ export function removeFavorite(songId) {
 export function clearFavorites() {
   writeFavorites([])
   return []
+}
+
+/**
+ * Favorites past the free limit stay saved after trial/Pass ends,
+ * but the UI locks/blurs them until they subscribe again.
+ */
+export function isFavoriteLocked(index, { hasPass = false, limit = FREE_FAVORITE_LIMIT } = {}) {
+  if (hasPass) return false
+  return index >= limit
+}
+
+export function countLockedFavorites(list = readFavorites(), limit = FREE_FAVORITE_LIMIT) {
+  return Math.max(0, list.length - limit)
 }

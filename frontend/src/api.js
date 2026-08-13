@@ -1,3 +1,5 @@
+import { getDeviceId } from './deviceId'
+
 const API_BASE = import.meta.env.VITE_API_URL || '/api'
 
 let csrfPromise = null
@@ -142,21 +144,53 @@ export async function adminMe() {
   return response.json()
 }
 
-export async function subscriberRegister({ email, password, confirmPassword }) {
+export async function subscriberRegister({ email, password, confirmPassword, referralCode }) {
+  const headers = await csrfHeaders({
+    'Content-Type': 'application/json',
+    'X-Device-Id': getDeviceId(),
+  })
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), 20000)
+  try {
+    const response = await fetch(`${API_BASE}/auth/register/`, {
+      method: 'POST',
+      credentials: 'include',
+      headers,
+      signal: controller.signal,
+      body: JSON.stringify({
+        email,
+        password,
+        confirm_password: confirmPassword,
+        device_id: getDeviceId(),
+        referral_code: referralCode,
+      }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      throw new Error(data.detail || 'Could not create account.')
+    }
+    return data
+  } catch (err) {
+    if (err?.name === 'AbortError') {
+      throw new Error('Sign up timed out. Please try again.')
+    }
+    throw err
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
+export async function applyReferralCode(referralCode) {
   const headers = await csrfHeaders({ 'Content-Type': 'application/json' })
-  const response = await fetch(`${API_BASE}/auth/register/`, {
+  const response = await fetch(`${API_BASE}/subscribers/apply-referral/`, {
     method: 'POST',
     credentials: 'include',
     headers,
-    body: JSON.stringify({
-      email,
-      password,
-      confirm_password: confirmPassword,
-    }),
+    body: JSON.stringify({ referral_code: referralCode }),
   })
   const data = await response.json().catch(() => ({}))
   if (!response.ok) {
-    throw new Error(data.detail || 'Could not create account.')
+    throw new Error(data.detail || 'Could not apply referral code.')
   }
   return data
 }
@@ -185,12 +219,15 @@ export async function subscriberLogout() {
 }
 
 export async function createCheckoutSession() {
-  const headers = await csrfHeaders({ 'Content-Type': 'application/json' })
+  const headers = await csrfHeaders({
+    'Content-Type': 'application/json',
+    'X-Device-Id': getDeviceId(),
+  })
   const response = await fetch(`${API_BASE}/billing/checkout/`, {
     method: 'POST',
     credentials: 'include',
     headers,
-    body: '{}',
+    body: JSON.stringify({ device_id: getDeviceId() }),
   })
   const data = await response.json().catch(() => ({}))
   if (!response.ok) {
@@ -202,8 +239,43 @@ export async function createCheckoutSession() {
 }
 
 export async function startOfflineTrial() {
-  const headers = await csrfHeaders({ 'Content-Type': 'application/json' })
+  const headers = await csrfHeaders({
+    'Content-Type': 'application/json',
+    'X-Device-Id': getDeviceId(),
+  })
   const response = await fetch(`${API_BASE}/billing/start-trial/`, {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+    body: JSON.stringify({ device_id: getDeviceId() }),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const err = new Error(data.detail || 'Could not start free trial.')
+    err.code = data.code
+    throw err
+  }
+  return data
+}
+
+export async function verifyEmailToken(token) {
+  const headers = await csrfHeaders({ 'Content-Type': 'application/json' })
+  const response = await fetch(`${API_BASE}/auth/verify-email/`, {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+    body: JSON.stringify({ token }),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data.detail || 'Could not verify email.')
+  }
+  return data
+}
+
+export async function resendVerificationEmail() {
+  const headers = await csrfHeaders({ 'Content-Type': 'application/json' })
+  const response = await fetch(`${API_BASE}/auth/resend-verification/`, {
     method: 'POST',
     credentials: 'include',
     headers,
@@ -211,9 +283,26 @@ export async function startOfflineTrial() {
   })
   const data = await response.json().catch(() => ({}))
   if (!response.ok) {
-    const err = new Error(data.detail || 'Could not start free trial.')
-    err.code = data.code
-    throw err
+    throw new Error(data.detail || 'Could not resend verification email.')
+  }
+  return data
+}
+
+export async function adminModerateSubscriber({ email, userId, action }) {
+  const headers = await csrfHeaders({ 'Content-Type': 'application/json' })
+  const response = await fetch(`${API_BASE}/billing/admin-moderate/`, {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+    body: JSON.stringify({
+      email,
+      user_id: userId,
+      action,
+    }),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data.detail || 'Moderation failed.')
   }
   return data
 }

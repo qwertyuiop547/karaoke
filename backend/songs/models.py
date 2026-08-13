@@ -131,6 +131,33 @@ class SubscriberProfile(models.Model):
         default=False,
         help_text='True after the account has consumed its one-time Offline Pass free trial.',
     )
+    email_verified = models.BooleanField(default=False)
+    email_verify_sent_at = models.DateTimeField(null=True, blank=True)
+    activated_email_sent_at = models.DateTimeField(null=True, blank=True)
+    expiring_email_sent_at = models.DateTimeField(null=True, blank=True)
+    referral_code = models.CharField(
+        max_length=32,
+        unique=True,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text='Unique referral code for Invite a Friend bonus trial extensions.',
+    )
+    referred_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='referrals_given',
+        help_text='User who invited this subscriber.',
+    )
+    referral_count = models.PositiveIntegerField(default=0)
+    referral_days_earned = models.PositiveIntegerField(default=0)
+    is_banned = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text='Admin kill switch — blocks offline access and new trials.',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -139,3 +166,48 @@ class SubscriberProfile(models.Model):
 
     def __str__(self):
         return f'{self.user} ({self.status})'
+
+
+class CatalogSeedLog(models.Model):
+    """Audit trail when the Platinum catalog is seeded or uploaded."""
+
+    class Source(models.TextChoices):
+        SEED_COMMAND = 'seed_command', 'Seed command'
+        CSV_UPLOAD = 'csv_upload', 'CSV upload'
+
+    source = models.CharField(max_length=32, choices=Source.choices, db_index=True)
+    songs_created = models.PositiveIntegerField(default=0)
+    songs_updated = models.PositiveIntegerField(default=0)
+    songs_skipped = models.PositiveIntegerField(default=0)
+    songs_deleted = models.PositiveIntegerField(default=0)
+    songs_total = models.PositiveIntegerField(default=0)
+    note = models.CharField(max_length=255, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return (
+            f'{self.get_source_display()} · +{self.songs_created} '
+            f'~{self.songs_updated} ({self.songs_total} total)'
+        )
+
+
+class TrialDevice(models.Model):
+    """One free trial per device fingerprint (anti multi-account abuse)."""
+
+    device_hash = models.CharField(max_length=64, unique=True, db_index=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='trial_devices',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.device_hash[:12]}… → {self.user_id}'
+

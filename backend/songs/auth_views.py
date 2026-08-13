@@ -6,11 +6,14 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .disposable_emails import is_disposable_email
+from .email_verify import loads_email_verify_token, mark_email_verified, send_verification_email
 from .entitlements import (
+    apply_referral,
     ensure_subscriber_profile,
     start_free_trial,
     subscription_payload,
@@ -23,6 +26,7 @@ User = get_user_model()
 
 
 def _auth_payload(user):
+    profile = ensure_subscriber_profile(user) if user.is_authenticated else None
     return {
         'authenticated': True,
         'username': user.username,
@@ -31,6 +35,7 @@ def _auth_payload(user):
         'is_superuser': bool(user.is_superuser),
         'offline_access': user_has_offline_access(user),
         'subscription': subscription_payload(user),
+        'email_verified': bool(profile.email_verified) if profile else False,
     }
 
 
@@ -175,19 +180,21 @@ class AdminChangePasswordView(APIView):
 
 
 class SubscriberRegisterView(APIView):
-    """Public signup for Offline Pass accounts."""
+    """Public signup for Offline Pass accounts (no auto-trial — verify email first)."""
 
     authentication_classes = [SessionAuthentication]
     permission_classes = [AllowAny]
 
     def post(self, request):
-        if is_rate_limited(
-            f'register:{client_ip(request)}',
-            limit=8,
-            window_seconds=600,
-        ):
+        ip = client_ip(request)
+        if is_rate_limited(f'register:{ip}', limit=3, window_seconds=600):
             return Response(
                 {'detail': 'Too many sign-up attempts. Try again later.'},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        if is_rate_limited(f'register-day:{ip}', limit=5, window_seconds=86400):
+            return Response(
+                {'detail': 'Daily sign-up limit reached for this network.'},
                 status=status.HTTP_429_TOO_MANY_REQUESTS,
             )
 
@@ -197,6 +204,11 @@ class SubscriberRegisterView(APIView):
 
         if not email or '@' not in email:
             return Response({'detail': 'A valid email is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if is_disposable_email(email):
+            return Response(
+                {'detail': 'Disposable email addresses are not allowed. Use a real email.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         if not password:
             return Response({'detail': 'Password is required.'}, status=status.HTTP_400_BAD_REQUEST)
         if confirm and password != confirm:
@@ -220,9 +232,41 @@ class SubscriberRegisterView(APIView):
 
         user = User.objects.create_user(username=email, email=email, password=password)
         ensure_subscriber_profile(user)
-        start_free_trial(user)
+        device_id = (
+            request.data.get('device_id')
+            or request.headers.get('X-Device-Id')
+            or ''
+        ).strip()
+        start_free_trial(user, device_id=device_id)
+
+        referral_code = (
+            request.data.get('referral_code')
+            or request.data.get('ref')
+            or request.query_params.get('ref')
+            or ''
+        ).strip()
+        referral_msg = ''
+        if referral_code:
+            ok_ref, ref_msg = apply_referral(user, referral_code)
+            if ok_ref:
+                referral_msg = ref_msg
+
+        # Optional verify email (not required for local trial by default).
+        mail = send_verification_email(user)
         login(request, user)
-        return Response({'ok': True, 'message': 'Account created.', **_auth_payload(user)}, status=status.HTTP_201_CREATED)
+        msg = 'Account created. Free trial started — save the offline catalog.'
+        if referral_msg:
+            msg = f'{msg} {referral_msg}'
+
+        return Response(
+            {
+                'ok': True,
+                'message': msg,
+                'verification': mail,
+                **_auth_payload(user),
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class SubscriberLoginView(APIView):
@@ -252,7 +296,6 @@ class SubscriberLoginView(APIView):
 
         user = authenticate(request, username=email, password=password)
         if user is None:
-            # Allow login if they registered with email field but different username casing
             match = User.objects.filter(email__iexact=email).first()
             if match:
                 user = authenticate(request, username=match.username, password=password)
@@ -266,3 +309,89 @@ class SubscriberLoginView(APIView):
         ensure_subscriber_profile(user)
         login(request, user)
         return Response({'ok': True, 'message': 'Login successful.', **_auth_payload(user)})
+
+
+class VerifyEmailView(APIView):
+    """Confirm email via signed token from the verification link."""
+
+    authentication_classes = [SessionAuthentication]
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        token = (request.data.get('token') or '').strip()
+        if not token:
+            return Response({'detail': 'Missing token.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            data = loads_email_verify_token(token)
+        except Exception:
+            return Response(
+                {'detail': 'Invalid or expired verification link.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            user = User.objects.get(pk=int(data['uid']))
+        except (User.DoesNotExist, KeyError, TypeError, ValueError):
+            return Response({'detail': 'Invalid verification link.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not mark_email_verified(user, data.get('email') or ''):
+            return Response(
+                {'detail': 'Could not verify this email.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # A verification link identifies its owner. Always switch the session
+        # to that owner so the response, browser session, and entitlement
+        # checks cannot disagree when somebody else was already signed in.
+        login(request, user)
+        return Response(
+            {
+                'ok': True,
+                'message': 'Email verified. You can start your Offline Pass trial.',
+                **_auth_payload(user),
+            }
+        )
+
+
+class ResendVerificationEmailView(APIView):
+    authentication_classes = [SessionAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if is_rate_limited(f'verify-resend:{request.user.pk}', limit=3, window_seconds=600):
+            return Response(
+                {'detail': 'Too many resend attempts. Try again later.'},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        profile = ensure_subscriber_profile(request.user)
+        if profile.email_verified:
+            return Response({'ok': True, 'message': 'Email already verified.', **_auth_payload(request.user)})
+        mail = send_verification_email(request.user)
+        return Response({'ok': True, 'verification': mail, **_auth_payload(request.user)})
+
+
+class ApplyReferralView(APIView):
+    """Apply a friend's referral code to extend trial by +3 days for both users."""
+
+    authentication_classes = [SessionAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        code = (
+            request.data.get('referral_code')
+            or request.data.get('ref')
+            or ''
+        ).strip()
+        if not code:
+            return Response(
+                {'detail': 'Referral code is required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        ok, msg = apply_referral(request.user, code)
+        if not ok:
+            return Response({'detail': msg}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({
+            'ok': True,
+            'message': msg,
+            **_auth_payload(request.user),
+        })

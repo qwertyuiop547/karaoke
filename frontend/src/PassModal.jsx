@@ -1,7 +1,8 @@
-import { PASS_BENEFITS, PASS_PERIOD, PASS_PRICE, TRIAL_DAYS } from './passBenefits'
+import { PASS_BENEFITS, PASS_PERIOD, PASS_PRICE, TRIAL_DAYS, getPassStatusInfo } from './passBenefits'
 
 /**
  * Dedicated Offline Pass offer — benefits first, then Get Pass → sign up / login / trial.
+ * GCash QR is NOT shown here — only in Account modal when activating/paying.
  */
 export default function PassModal({
   onClose,
@@ -9,18 +10,35 @@ export default function PassModal({
   loggedIn = false,
   hasAccess = false,
   trialAvailable = false,
+  trialUsed = false,
+  account = null,
+  headline = '',
+  kicker = '',
+  lead = '',
   onGetPass,
   onLogin,
   onManage,
   onStartTrial,
 }) {
+  const statusInfo = getPassStatusInfo(
+    account || {
+      authenticated: loggedIn,
+      offline_access: hasAccess,
+      subscription: { trial_available: trialAvailable, trial_used: trialUsed },
+    },
+  )
+  const isTrialing = statusInfo.statusType === 'trial'
+  const postTrial = !hasAccess && trialUsed && !trialAvailable
+
   const primaryLabel = hasAccess
     ? 'Open account'
     : loggedIn && trialAvailable
       ? `Start ${TRIAL_DAYS}-day free trial`
       : loggedIn
-        ? 'Get Pass'
-        : `Start ${TRIAL_DAYS}-day free trial`
+        ? 'Subscribe now'
+        : trialAvailable
+          ? `Start ${TRIAL_DAYS}-day free trial`
+          : 'Subscribe now'
 
   const onPrimary = () => {
     if (hasAccess) {
@@ -33,6 +51,38 @@ export default function PassModal({
     }
     onGetPass?.()
   }
+
+  const resolvedKicker =
+    kicker ||
+    (hasAccess
+      ? isTrialing
+        ? statusInfo.kickerText
+        : 'Activated'
+      : postTrial
+        ? 'Trial ended'
+        : `${TRIAL_DAYS}-day trial`)
+  const resolvedTitle =
+    headline ||
+    (hasAccess
+      ? isTrialing
+        ? statusInfo.statusText
+        : statusInfo.formattedEnd
+          ? `Activated until ${statusInfo.formattedEnd}`
+          : 'Your Offline Pass'
+      : postTrial
+        ? 'Miss your Offline Pass?'
+        : 'Offline Pass')
+  const resolvedLead =
+    lead ||
+    (hasAccess
+      ? isTrialing
+        ? `${statusInfo.statusText}. Save the catalog now — then pay via GCash for continuous access.`
+        : statusInfo.formattedEnd
+          ? `Activated until ${statusInfo.formattedEnd}. Manage billing or save the catalog.`
+          : 'Pass is active on this account — manage billing or save the catalog.'
+      : postTrial
+        ? `Your free trial is over. Subscribe now (${PASS_PRICE}${PASS_PERIOD} via GCash) to unlock offline search again.`
+        : `Subukan muna nang libre for ${TRIAL_DAYS} days. Pagkatapos, i-activate via GCash (${PASS_PRICE}${PASS_PERIOD}).`)
 
   return (
     <div className="drawer-overlay install-app-overlay" onClick={onClose}>
@@ -86,19 +136,15 @@ export default function PassModal({
         </div>
 
         <header className="account-modal-header">
-          <p className="account-modal-kicker">
-            {hasAccess ? 'Active' : `${TRIAL_DAYS}-day trial`}
-          </p>
-          <h2 id="pass-modal-title">
-            {hasAccess ? 'Your Offline Pass' : 'Offline Pass'}
-          </h2>
-          <p className="account-modal-lead">
-            {hasAccess
-              ? 'Pass is active on this account — manage billing or save the catalog.'
-              : `Subukan muna nang libre for ${TRIAL_DAYS} days. Pagkatapos, ${PASS_PRICE}${PASS_PERIOD} para magpatuloy.`}
-          </p>
+          <p className="account-modal-kicker">{resolvedKicker}</p>
+          <h2 id="pass-modal-title">{resolvedTitle}</h2>
+          <p className="account-modal-lead">{resolvedLead}</p>
           {reason && !hasAccess ? <p className="account-modal-reason">{reason}</p> : null}
         </header>
+
+        <div className="pass-referral-banner">
+          <span>🎁 <strong>Invite a friend:</strong> Pareho kayong makakakuha ng <strong>+3 days trial extension!</strong></span>
+        </div>
 
         {!hasAccess ? (
           <ul className="account-benefits" aria-label="What you get with Offline Pass">
@@ -133,12 +179,6 @@ export default function PassModal({
             <button type="button" className="account-text-btn" onClick={onLogin}>
               May account ka na? Log in
             </button>
-          ) : null}
-          {!hasAccess && loggedIn && !trialAvailable ? (
-            <p className="account-modal-footnote">
-              Trial used — continue with {PASS_PRICE}
-              {PASS_PERIOD} checkout.
-            </p>
           ) : null}
         </div>
       </div>

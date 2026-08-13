@@ -15,15 +15,26 @@ export default function InstallAppModal({
   hasOfflineAccess = false,
   onOpenAccount,
 }) {
-  const catalogReady = Boolean(offlineMeta?.count)
+  const catalogReady = Boolean(hasOfflineAccess && offlineMeta?.count)
 
   const handleInstall = async () => {
-    const result = await promptInstall?.()
-    if (result?.ok && !catalogReady && !syncingOffline && hasOfflineAccess) {
-      onSaveOffline?.()
-    } else if (result?.ok && !hasOfflineAccess) {
-      onOpenAccount?.()
+    if (installed) return
+    if (canPromptInstall) {
+      const result = await promptInstall?.()
+      if (result?.ok && !catalogReady && !syncingOffline && hasOfflineAccess) {
+        onSaveOffline?.()
+      } else if (result?.ok && !hasOfflineAccess) {
+        onOpenAccount?.()
+      } else if (result?.reason === 'dismissed') {
+        /* user closed native prompt — keep modal open */
+      }
+      return
     }
+    // No native prompt (common on iOS / already-dismissed Chrome) — scroll hints into view.
+    document.getElementById('install-manual-hint')?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+    })
   }
 
   const handleCatalog = () => {
@@ -81,8 +92,8 @@ export default function InstallAppModal({
                   : ios
                     ? 'Sa Safari: Share → Add to Home Screen.'
                     : canPromptInstall
-                      ? 'Tap Install below — adds Platino to your device.'
-                      : 'Use Chrome/Edge menu → Install app / Add to Home screen.'}
+                      ? 'Tap Install App below — adds Platino to your device.'
+                      : 'Tap Install App below for steps (Chrome/Edge menu → Install app).'}
               </p>
             </div>
           </li>
@@ -115,20 +126,32 @@ export default function InstallAppModal({
         </ol>
 
         <div className="install-app-actions">
-          {!installed && canPromptInstall ? (
+          {!installed ? (
             <button
               type="button"
               className="admin-action-btn install-primary-btn"
               onClick={handleInstall}
             >
-              Install App
+              {canPromptInstall ? 'Install App' : ios ? 'How to install (iOS)' : 'Install App'}
             </button>
           ) : null}
 
-          {!installed && ios ? (
-            <p className="install-ios-hint">
-              Tap <strong>Share</strong> (□↑) sa Safari, then{' '}
-              <strong>Add to Home Screen</strong>.
+          {!installed ? (
+            <p id="install-manual-hint" className="install-ios-hint">
+              {ios ? (
+                <>
+                  Tap <strong>Share</strong> (□↑) sa Safari, then{' '}
+                  <strong>Add to Home Screen</strong>.
+                </>
+              ) : canPromptInstall ? (
+                <>Chrome/Edge will show a system install dialog.</>
+              ) : (
+                <>
+                  Open browser menu (⋮) → <strong>Install app</strong> /{' '}
+                  <strong>Add to Home screen</strong>. Kung wala, use Chrome/Edge
+                  over HTTPS and refresh once.
+                </>
+              )}
             </p>
           ) : null}
 

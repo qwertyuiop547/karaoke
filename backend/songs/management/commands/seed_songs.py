@@ -2,7 +2,8 @@ from pathlib import Path
 import csv
 from django.core.management.base import BaseCommand
 from django.db import transaction
-from songs.models import Song
+from songs.catalog_refresh import log_catalog_refresh
+from songs.models import CatalogSeedLog, Song
 
 
 # Prefer songs/data (catalog builder output); fall back to legacy backend/data.
@@ -67,10 +68,11 @@ class Command(BaseCommand):
                     )
                 )
 
+        deleted_count = 0
         with transaction.atomic():
             if options["replace"]:
-                deleted, _ = Song.objects.all().delete()
-                self.stdout.write(f"Deleted {deleted} existing song rows.")
+                deleted_count, _ = Song.objects.all().delete()
+                self.stdout.write(f"Deleted {deleted_count} existing song rows.")
 
             existing = {
                 s.platinum_number: s
@@ -105,6 +107,14 @@ class Command(BaseCommand):
                     ["title", "artist", "language", "genre"],
                     batch_size=500,
                 )
+
+        log_catalog_refresh(
+            source=CatalogSeedLog.Source.SEED_COMMAND,
+            created=len(to_create),
+            updated=len(to_update),
+            deleted=deleted_count,
+            note=str(CSV_PATH.name),
+        )
 
         self.stdout.write(
             self.style.SUCCESS(

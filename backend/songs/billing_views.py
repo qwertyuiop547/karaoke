@@ -1,7 +1,10 @@
 import logging
 from datetime import datetime, timezone as dt_timezone
 
-import stripe
+try:
+    import stripe
+except ImportError:
+    stripe = None
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
@@ -15,10 +18,20 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .email_verify import (
+    check_and_send_expiring_emails,
+    send_pass_activated_email,
+    send_pass_expiring_email,
+)
 from .entitlements import (
+    bind_trial_device,
+    device_trial_blocked,
     ensure_subscriber_profile,
+    grant_manual_trial,
     start_free_trial,
+    stripe_configured,
     subscription_payload,
+    trial_days,
     user_has_offline_access,
 )
 from .models import SubscriberProfile
@@ -69,6 +82,12 @@ def _apply_subscription_object(profile: SubscriberProfile, subscription) -> None
     if period_end is None and isinstance(subscription, dict):
         period_end = subscription.get('current_period_end')
     profile.current_period_end = _ts_to_dt(period_end)
+    if status_value == SubscriberProfile.Status.TRIALING or status_value == 'trialing':
+        profile.trial_used = True
+        send_pass_activated_email(profile.user, until_date=profile.current_period_end)
+    if status_value == SubscriberProfile.Status.ACTIVE or status_value == 'active':
+        profile.trial_used = True
+        send_pass_activated_email(profile.user, until_date=profile.current_period_end)
     profile.save()
 
 
@@ -96,6 +115,38 @@ class BillingCheckoutView(APIView):
             )
 
         profile = ensure_subscriber_profile(request.user)
+        if profile.is_banned:
+            return Response(
+                {'detail': 'This account is blocked from Offline Pass.', 'code': 'banned'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if not profile.email_verified:
+            return Response(
+                {
+                    'detail': 'Verify your email before starting Offline Pass.',
+                    'code': 'email_unverified',
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        device_id = (
+            request.data.get('device_id')
+            or request.headers.get('X-Device-Id')
+            or ''
+        ).strip()
+        offer_trial = not profile.trial_used and profile.status != SubscriberProfile.Status.ACTIVE
+        if offer_trial:
+            blocked, code = device_trial_blocked(device_id, user=request.user)
+            if blocked:
+                detail = {
+                    'device_required': 'Device id required to start the free trial.',
+                    'device_used': 'Free trial was already used on this device. Subscribe to continue.',
+                }.get(code, 'Cannot start trial on this device.')
+                return Response(
+                    {'detail': detail, 'code': code},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         try:
             if not profile.stripe_customer_id:
                 customer = api.Customer.create(
@@ -105,16 +156,35 @@ class BillingCheckoutView(APIView):
                 profile.stripe_customer_id = customer.id
                 profile.save(update_fields=['stripe_customer_id', 'updated_at'])
 
-            session = api.checkout.Session.create(
-                mode='subscription',
-                customer=profile.stripe_customer_id,
-                line_items=[{'price': price_id, 'quantity': 1}],
-                success_url=f'{frontend}/?billing=success&session_id={{CHECKOUT_SESSION_ID}}',
-                cancel_url=f'{frontend}/?billing=cancel',
-                client_reference_id=str(request.user.pk),
-                metadata={'user_id': str(request.user.pk)},
-                integration_identifier='platino_offline_pass_a1b2c3d4',
-            )
+            session_kwargs = {
+                'mode': 'subscription',
+                'customer': profile.stripe_customer_id,
+                'line_items': [{'price': price_id, 'quantity': 1}],
+                'success_url': f'{frontend}/?billing=success&session_id={{CHECKOUT_SESSION_ID}}',
+                'cancel_url': f'{frontend}/?billing=cancel',
+                'client_reference_id': str(request.user.pk),
+                'metadata': {
+                    'user_id': str(request.user.pk),
+                    'device_id': device_id[:128],
+                    'offer_trial': '1' if offer_trial else '0',
+                },
+                'integration_identifier': 'platino_offline_pass_a1b2c3d4',
+            }
+            if offer_trial:
+                # Card required up front; charge starts after the configured trial.
+                session_kwargs['payment_method_collection'] = 'always'
+                session_kwargs['subscription_data'] = {
+                    'trial_period_days': trial_days(),
+                    'trial_settings': {
+                        'end_behavior': {'missing_payment_method': 'cancel'},
+                    },
+                    'metadata': {
+                        'user_id': str(request.user.pk),
+                        'device_id': device_id[:128],
+                    },
+                }
+
+            session = api.checkout.Session.create(**session_kwargs)
         except Exception as exc:
             logger.exception('Stripe checkout failed')
             return Response(
@@ -122,11 +192,18 @@ class BillingCheckoutView(APIView):
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        return Response({'ok': True, 'url': session.url, 'session_id': session.id})
+        return Response(
+            {
+                'ok': True,
+                'url': session.url,
+                'session_id': session.id,
+                'trial_offered': offer_trial,
+            }
+        )
 
 
 class BillingStartTrialView(APIView):
-    """Start the one-time 2-day Offline Pass free trial (existing accounts)."""
+    """Local no-card trial fallback (only when Stripe is not configured / ALLOW_LOCAL_TRIAL)."""
 
     authentication_classes = [SessionAuthentication]
     permission_classes = [IsAuthenticated]
@@ -137,16 +214,36 @@ class BillingStartTrialView(APIView):
                 {'detail': 'Too many trial attempts. Try again later.'},
                 status=status.HTTP_429_TOO_MANY_REQUESTS,
             )
+        if stripe_configured() and not getattr(settings, 'ALLOW_LOCAL_TRIAL', ''):
+            # Prefer Stripe card-required trial.
+            pass
 
-        ok, _profile, code = start_free_trial(request.user)
+        device_id = (
+            request.data.get('device_id')
+            or request.headers.get('X-Device-Id')
+            or ''
+        ).strip()
+        ok, _profile, code = start_free_trial(request.user, device_id=device_id)
         if not ok:
             detail = {
                 'already_active': 'Offline Pass is already active on this account.',
                 'trial_active': 'Your free trial is already running.',
                 'trial_used': 'Free trial was already used on this account. Subscribe to continue.',
+                'email_unverified': 'Verify your email before starting the free trial.',
+                'device_required': 'Device id required to start the free trial.',
+                'device_used': 'Free trial was already used on this device.',
+                'banned': 'This account is blocked from Offline Pass.',
+                'use_stripe_trial': (
+                    f'Start your free trial via Get Pass (card required, '
+                    f'no charge for {trial_days()} days).'
+                ),
             }.get(code, 'Could not start free trial.')
             return Response(
-                {'detail': detail, 'code': code, 'subscription': subscription_payload(request.user)},
+                {
+                    'detail': detail,
+                    'code': code,
+                    'subscription': subscription_payload(request.user),
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -250,6 +347,10 @@ class BillingWebhookView(APIView):
                 return
             if customer_id and profile.stripe_customer_id != customer_id:
                 profile.stripe_customer_id = customer_id
+            meta = obj.get('metadata') if isinstance(obj, dict) else getattr(obj, 'metadata', None) or {}
+            device_id = (meta.get('device_id') if isinstance(meta, dict) else '') or ''
+            if device_id:
+                bind_trial_device(profile.user, device_id)
             sub_id = obj.get('subscription') if isinstance(obj, dict) else obj.subscription
             if sub_id:
                 profile.stripe_subscription_id = sub_id
@@ -260,6 +361,8 @@ class BillingWebhookView(APIView):
                 except Exception:
                     logger.exception('Could not retrieve subscription %s', sub_id)
                     profile.status = SubscriberProfile.Status.ACTIVE
+                    profile.trial_used = True
+            profile.trial_used = True
             profile.save()
             return
 
@@ -345,12 +448,100 @@ class BillingAdminActivateView(APIView):
         if profile.status == SubscriberProfile.Status.INACTIVE:
             profile.status = SubscriberProfile.Status.ACTIVE
         profile.save()
+        send_pass_activated_email(user, until_date=until)
 
         return Response(
             {
                 'ok': True,
                 'username': user.username,
                 'email': user.email,
+                'offline_access': user_has_offline_access(user),
+                'subscription': subscription_payload(user),
+            }
+        )
+
+
+class BillingAdminModerateView(APIView):
+    """Staff kill switch: ban / unban / revoke trial / mark email verified."""
+
+    authentication_classes = [SessionAuthentication]
+    permission_classes = [IsStaffUser]
+
+    def post(self, request):
+        action = (request.data.get('action') or '').strip().lower()
+        email = (request.data.get('email') or '').strip().lower()
+        user_id = request.data.get('user_id')
+
+        if user_id:
+            user = get_object_or_404(User, pk=user_id)
+        elif email:
+            user = (
+                User.objects.filter(email__iexact=email).first()
+                or User.objects.filter(username__iexact=email).first()
+            )
+            if not user:
+                return Response({'detail': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            return Response(
+                {'detail': 'Provide email or user_id.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        profile = ensure_subscriber_profile(user)
+        if action == 'ban':
+            profile.is_banned = True
+            profile.status = SubscriberProfile.Status.INACTIVE
+            profile.manual_override_until = None
+            profile.save()
+        elif action == 'unban':
+            profile.is_banned = False
+            profile.save(update_fields=['is_banned', 'updated_at'])
+        elif action == 'revoke_trial':
+            profile.status = SubscriberProfile.Status.INACTIVE
+            profile.current_period_end = timezone.now()
+            profile.trial_used = True
+            profile.manual_override_until = None
+            profile.save()
+        elif action == 'verify_email':
+            profile.email_verified = True
+            profile.save(update_fields=['email_verified', 'updated_at'])
+        elif action == 'grant_trial':
+            ok, _profile, code = grant_manual_trial(user)
+            if not ok:
+                return Response(
+                    {'detail': 'Could not grant trial.', 'code': code},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        elif action == 'send_activation_email':
+            res = send_pass_activated_email(user, background=False)
+            if not res.get('sent'):
+                return Response(
+                    {'detail': res.get('detail', 'Could not send activation email.')},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        elif action == 'send_expiring_email':
+            res = send_pass_expiring_email(user, background=False)
+            if not res.get('sent'):
+                return Response(
+                    {'detail': res.get('detail', 'Could not send expiring email.')},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        elif action == 'check_expiring':
+            count = check_and_send_expiring_emails()
+            return Response({'ok': True, 'queued_count': count, 'detail': f'{count} expiring emails queued.'})
+        else:
+            return Response(
+                {
+                    'detail': 'action must be one of: ban, unban, revoke_trial, verify_email, grant_trial, send_activation_email, send_expiring_email, check_expiring',
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                'ok': True,
+                'action': action,
+                'email': user.email or user.username,
                 'offline_access': user_has_offline_access(user),
                 'subscription': subscription_payload(user),
             }
@@ -388,6 +579,8 @@ class BillingSubscribersListView(APIView):
                     ),
                     'offline_access': user_has_offline_access(user),
                     'trial_used': bool(profile.trial_used),
+                    'email_verified': bool(profile.email_verified),
+                    'is_banned': bool(profile.is_banned),
                     'stripe_customer_id': profile.stripe_customer_id or '',
                 }
             )

@@ -1,6 +1,11 @@
 const DB_NAME = 'platino_offline_db'
 const STORE = 'songs'
 const META_KEY = 'platino_offline_meta'
+/** ISO timestamp — local Pass window so expired trials can't keep using IndexedDB offline. */
+const ACCESS_UNTIL_KEY = 'platino_offline_access_until'
+/** After Pass expires offline, allow read-only catalog search for this window. */
+const GRACE_UNTIL_KEY = 'platino_offline_grace_until'
+export const OFFLINE_GRACE_PERIOD_MS = 24 * 60 * 60 * 1000
 const BATCH_SIZE = 400
 
 /** Re-check server catalog at most every 6 hours (If-None-Match makes it cheap). */
@@ -105,6 +110,125 @@ function writeOfflineMeta(meta) {
   return meta
 }
 
+/** Persist Pass end time so offline mode stops when trial/subscription expires. */
+export function setOfflineAccessUntil(isoOrNull) {
+  try {
+    if (!isoOrNull) {
+      localStorage.removeItem(ACCESS_UNTIL_KEY)
+      return null
+    }
+    localStorage.setItem(ACCESS_UNTIL_KEY, String(isoOrNull))
+    return String(isoOrNull)
+  } catch {
+    return null
+  }
+}
+
+export function getOfflineAccessUntil() {
+  try {
+    return localStorage.getItem(ACCESS_UNTIL_KEY) || null
+  } catch {
+    return null
+  }
+}
+
+/** True while the locally stored Pass window is still open. */
+export function hasLocalOfflineAccess(now = Date.now()) {
+  const until = getOfflineAccessUntil()
+  if (!until) return false
+  const ms = new Date(until).getTime()
+  return Number.isFinite(ms) && ms > now
+}
+
+export function getOfflineGraceUntil() {
+  try {
+    return localStorage.getItem(GRACE_UNTIL_KEY) || null
+  } catch {
+    return null
+  }
+}
+
+/** Start or extend offline grace after Pass expires with no network. */
+export function startOfflineGracePeriod(now = Date.now()) {
+  const until = new Date(now + OFFLINE_GRACE_PERIOD_MS).toISOString()
+  try {
+    localStorage.setItem(GRACE_UNTIL_KEY, until)
+  } catch {
+    /* ignore */
+  }
+  return until
+}
+
+export function clearOfflineGrace() {
+  try {
+    localStorage.removeItem(GRACE_UNTIL_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+/** True during the post-expiry offline grace window. */
+export function hasOfflineGraceAccess(now = Date.now()) {
+  const until = getOfflineGraceUntil()
+  if (!until) return false
+  const ms = new Date(until).getTime()
+  return Number.isFinite(ms) && ms > now
+}
+
+/**
+ * @returns {'active' | 'grace' | 'none'}
+ */
+export function getOfflineAccessMode(now = Date.now()) {
+  if (hasLocalOfflineAccess(now)) return 'active'
+  if (hasOfflineGraceAccess(now)) return 'grace'
+  return 'none'
+}
+
+/** Human-readable toast for catalog sync diffs. */
+export function formatCatalogChangelog(changelog, totalCount) {
+  if (!changelog) return null
+  const parts = []
+  if (changelog.added > 0) parts.push(`${changelog.added.toLocaleString()} new`)
+  if (changelog.removed > 0) parts.push(`${changelog.removed.toLocaleString()} removed`)
+  if (!parts.length) return null
+  const total = Number.isFinite(totalCount) ? totalCount.toLocaleString() : String(totalCount || '')
+  return `Catalog updated · ${parts.join(', ')} · ${total} songs total`
+}
+
+/**
+ * Wipe IndexedDB catalog + meta. Call when trial ends / free plan / logout.
+ * Offline search must not keep working after Pass expires.
+ */
+export async function clearOfflineCatalog() {
+  catalogCache = null
+  try {
+    localStorage.removeItem(META_KEY)
+  } catch {
+    /* ignore */
+  }
+  try {
+    localStorage.removeItem(ACCESS_UNTIL_KEY)
+  } catch {
+    /* ignore */
+  }
+  clearOfflineGrace()
+
+  try {
+    const db = await openDb()
+    try {
+      const tx = db.transaction(STORE, 'readwrite')
+      tx.objectStore(STORE).clear()
+      await txDone(tx)
+    } finally {
+      db.close()
+    }
+  } catch {
+    /* IndexedDB may be unavailable in private mode — meta already cleared */
+  }
+
+  return null
+}
+
 /** True when an existing offline pack should quietly re-check the server. */
 export function needsOfflineAutoSync(
   meta = getOfflineMeta(),
@@ -163,6 +287,26 @@ export async function saveOfflineCatalog(songs, { etag } = {}) {
     throw new Error('Offline pack had no usable songs.')
   }
 
+  let prevNumbers = new Set()
+  try {
+    const prev = await loadCatalogCached()
+    prevNumbers = new Set(prev.map((row) => row.platinum_number).filter(Boolean))
+  } catch {
+    prevNumbers = new Set()
+  }
+
+  const newNumbers = new Set(normalized.map((row) => row.platinum_number).filter(Boolean))
+  let added = 0
+  let removed = 0
+  for (const number of newNumbers) {
+    if (!prevNumbers.has(number)) added += 1
+  }
+  for (const number of prevNumbers) {
+    if (!newNumbers.has(number)) removed += 1
+  }
+  const changelog =
+    prevNumbers.size > 0 && (added > 0 || removed > 0) ? { added, removed } : null
+
   const db = await openDb()
   try {
     const clearTx = db.transaction(STORE, 'readwrite')
@@ -198,10 +342,17 @@ export async function saveOfflineCatalog(songs, { etag } = {}) {
     savedAt: now,
     checkedAt: now,
     etag: stripEtag(etag) || getOfflineMeta()?.etag || null,
+    changelog: changelog
+      ? {
+          ...changelog,
+          at: now,
+        }
+      : null,
   }
   writeOfflineMeta(meta)
   catalogCache = normalized
-  return meta
+  clearOfflineGrace()
+  return { meta, changelog }
 }
 
 async function loadCatalogCached() {

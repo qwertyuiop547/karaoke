@@ -3,7 +3,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import path, reverse
 from django.utils.html import format_html
 from .csv_import import import_songs_csv
-from .models import Song, SongReport, SubscriberProfile
+from .catalog_refresh import log_catalog_refresh
+from .models import CatalogSeedLog, Song, SongReport, SubscriberProfile
 from .report_resolve import ResolveError, resolve_report
 
 
@@ -12,13 +13,15 @@ class SubscriberProfileAdmin(admin.ModelAdmin):
     list_display = (
         'user',
         'status',
+        'email_verified',
+        'trial_used',
+        'is_banned',
         'current_period_end',
         'manual_override_until',
-        'trial_used',
         'stripe_customer_id',
         'updated_at',
     )
-    list_filter = ('status', 'trial_used')
+    list_filter = ('status', 'trial_used', 'email_verified', 'is_banned')
     search_fields = ('user__username', 'user__email', 'stripe_customer_id', 'stripe_subscription_id')
     raw_id_fields = ('user',)
 
@@ -59,6 +62,14 @@ class SongAdmin(admin.ModelAdmin):
             except ValueError as exc:
                 messages.error(request, str(exc))
                 return render(request, 'admin/songs/song/upload_csv.html', context)
+
+            log_catalog_refresh(
+                source=CatalogSeedLog.Source.CSV_UPLOAD,
+                created=result['created'],
+                updated=result['updated'],
+                skipped=result['skipped'],
+                note=upload.name or 'django-admin upload',
+            )
 
             messages.success(
                 request,
@@ -212,3 +223,35 @@ class SongReportAdmin(admin.ModelAdmin):
         else:
             messages.success(request, message)
         return redirect('admin:songs_songreport_changelist')
+
+
+@admin.register(CatalogSeedLog)
+class CatalogSeedLogAdmin(admin.ModelAdmin):
+    list_display = (
+        'created_at',
+        'source',
+        'songs_created',
+        'songs_updated',
+        'songs_skipped',
+        'songs_deleted',
+        'songs_total',
+        'note',
+    )
+    list_filter = ('source',)
+    readonly_fields = (
+        'source',
+        'songs_created',
+        'songs_updated',
+        'songs_skipped',
+        'songs_deleted',
+        'songs_total',
+        'note',
+        'created_at',
+    )
+    ordering = ('-created_at',)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False

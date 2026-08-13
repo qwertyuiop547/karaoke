@@ -20,9 +20,10 @@ from .cache_utils import (
     song_list_cache_key,
     song_list_cache_ttl,
 )
+from .catalog_refresh import log_catalog_refresh
 from .csv_import import import_songs_csv
 from .entitlements import user_has_offline_access
-from .models import SearchEvent, Song, SongReport
+from .models import CatalogSeedLog, SearchEvent, Song, SongReport
 from .permissions import IsStaffUser, ReadOnlyOrStaff
 from .ratelimit import client_ip, is_rate_limited
 from .report_resolve import ResolveError, resolve_report
@@ -209,6 +210,13 @@ class SongViewSet(viewsets.ModelViewSet):
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         bust_song_list_cache()
+        log_catalog_refresh(
+            source=CatalogSeedLog.Source.CSV_UPLOAD,
+            created=result['created'],
+            updated=result['updated'],
+            skipped=result['skipped'],
+            note=(getattr(upload, 'name', '') or 'control-room upload')[:255],
+        )
         return Response(
             {
                 'ok': True,
@@ -300,6 +308,20 @@ class AnalyticsSummaryView(APIView):
             .order_by('-hits')[:15]
         )
         open_reports = SongReport.objects.filter(status=SongReport.Status.OPEN).count()
+        latest_refresh = CatalogSeedLog.objects.order_by('-created_at').first()
+        recent_refreshes = list(
+            CatalogSeedLog.objects.order_by('-created_at')[:5].values(
+                'id',
+                'source',
+                'songs_created',
+                'songs_updated',
+                'songs_skipped',
+                'songs_deleted',
+                'songs_total',
+                'note',
+                'created_at',
+            )
+        )
         return Response(
             {
                 'window_days': 30,
@@ -309,6 +331,10 @@ class AnalyticsSummaryView(APIView):
                 'report_count': SongReport.objects.count(),
                 'top_searches': top_searches,
                 'top_reported': top_reported,
+                'catalog_refresh': {
+                    'latest': recent_refreshes[0] if recent_refreshes else None,
+                    'recent': recent_refreshes,
+                },
             }
         )
 

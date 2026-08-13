@@ -27,6 +27,26 @@ export function saveJoinUrl(value) {
   }
 }
 
+const REFERRAL_CODE_KEY = 'platino_referral_code'
+
+export function getSavedReferralCode() {
+  try {
+    return localStorage.getItem(REFERRAL_CODE_KEY) || ''
+  } catch {
+    return ''
+  }
+}
+
+export function saveReferralCode(code) {
+  try {
+    if (code) {
+      localStorage.setItem(REFERRAL_CODE_KEY, code.toUpperCase().trim())
+    }
+  } catch {
+    // ignore
+  }
+}
+
 /** True when opened from a QR / join poster link. */
 export function consumeJoinParam() {
   const url = new URL(window.location.href)
@@ -35,4 +55,23 @@ export function consumeJoinParam() {
   const next = `${url.pathname}${url.search}${url.hash}`
   window.history.replaceState(null, '', next || '/')
   return true
+}
+
+/** Capture ?ref=CODE from URL and save in localStorage for signup. */
+export function consumeReferralParam() {
+  try {
+    const url = new URL(window.location.href)
+    const ref = (url.searchParams.get('ref') || url.searchParams.get('referral') || '').trim()
+    if (ref) {
+      saveReferralCode(ref)
+      url.searchParams.delete('ref')
+      url.searchParams.delete('referral')
+      const next = `${url.pathname}${url.search}${url.hash}`
+      window.history.replaceState(null, '', next || '/')
+      return ref
+    }
+  } catch {
+    // ignore
+  }
+  return getSavedReferralCode()
 }

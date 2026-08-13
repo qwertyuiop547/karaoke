@@ -1,13 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
+  applyReferralCode,
   createBillingPortalSession,
   createCheckoutSession,
+  resendVerificationEmail,
   startOfflineTrial,
   subscriberLogin,
   subscriberLogout,
   subscriberRegister,
 } from './api'
-import { PASS_LABEL, PASS_PERIOD, PASS_PRICE, TRIAL_DAYS } from './passBenefits'
+import { getSavedReferralCode } from './joinUrl'
+import { PASS_LABEL, PASS_PERIOD, PASS_PRICE, TRIAL_DAYS, getPassStatusInfo } from './passBenefits'
+import GCashPayPanel from './GCashPayPanel'
 
 function formatTrialEnd(iso) {
   if (!iso) return ''
@@ -44,13 +48,26 @@ export default function AccountModal({
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [showGCashPay, setShowGCashPay] = useState(false)
+
+  // Referral states
+  const [referralInput, setReferralInput] = useState(() => getSavedReferralCode())
+  const [referralMsg, setReferralMsg] = useState('')
+  const [copySuccess, setCopySuccess] = useState(false)
 
   const loggedIn = Boolean(account?.authenticated)
   const hasAccess = Boolean(account?.offline_access)
   const sub = account?.subscription || {}
-  const isTrialing = Boolean(sub.is_trialing)
+  const passStatus = getPassStatusInfo(account)
+  const isTrialing = passStatus.statusType === 'trial'
   const trialAvailable = Boolean(sub.trial_available)
-  const trialEndLabel = formatTrialEnd(sub.current_period_end)
+  const emailVerified = Boolean(account?.email_verified ?? sub.email_verified)
+  const stripeTrial = Boolean(sub.stripe_trial)
+  const localTrial = Boolean(sub.local_trial_allowed ?? true)
+  const needsEmailVerify = stripeTrial && !emailVerified && !hasAccess
+
+  const myReferralCode = sub.referral_code || ''
+  const myReferralUrl = myReferralCode ? `${window.location.origin}/?ref=${myReferralCode}` : ''
 
   const handleAuth = async (e) => {
     e.preventDefault()
@@ -63,6 +80,7 @@ export default function AccountModal({
           email,
           password,
           confirmPassword: confirm,
+          referralCode: referralInput,
         })
       } else {
         next = await subscriberLogin(email, password)
@@ -78,19 +96,92 @@ export default function AccountModal({
     }
   }
 
+  const handleApplyReferral = async (e) => {
+    e.preventDefault()
+    if (!referralInput.trim()) return
+    setBusy(true)
+    setReferralMsg('')
+    setError('')
+    try {
+      const res = await applyReferralCode(referralInput)
+      setReferralMsg(res.message || 'Referral applied!')
+      onAccountChange?.(res)
+    } catch (err) {
+      setError(err.message || 'Could not apply referral code.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleCopyReferralLink = async () => {
+    if (!myReferralUrl) return
+    try {
+      await navigator.clipboard.writeText(myReferralUrl)
+      setCopySuccess(true)
+      setTimeout(() => setCopySuccess(false), 2500)
+    } catch {
+      window.prompt('Copy your referral link:', myReferralUrl)
+    }
+  }
+
+  const handleShareReferral = async () => {
+    if (!myReferralUrl) return
+    const text = 'Kumanta at mag-search offline sa Platino Songbook! Gamitin ang referral link ko para makakuha ng +3 days free trial extension pareho tayo:'
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Platino Songbook - Free Trial Bonus',
+          text,
+          url: myReferralUrl,
+        })
+        return
+      } catch {
+        // Fallback to copy link
+      }
+    }
+    handleCopyReferralLink()
+  }
+
   const handleStartTrial = async () => {
     setBusy(true)
     setError('')
     try {
+      if (stripeTrial && !localTrial) {
+        const session = await createCheckoutSession()
+        if (session.url) {
+          window.location.href = session.url
+          return
+        }
+        setError('Checkout did not return a URL.')
+        return
+      }
       const data = await startOfflineTrial()
       onAccountChange?.({
         ...account,
         authenticated: true,
         offline_access: data.offline_access,
         subscription: data.subscription,
+        email_verified: data.email_verified ?? account?.email_verified,
       })
     } catch (err) {
       setError(err.message || 'Could not start free trial.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleResendVerify = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      const data = await resendVerificationEmail()
+      onAccountChange?.(data)
+      if (data.verification?.verify_url) {
+        setError('')
+        window.prompt('Verification link (SMTP not configured):', data.verification.verify_url)
+      }
+    } catch (err) {
+      setError(err.message || 'Could not resend verification.')
     } finally {
       setBusy(false)
     }
@@ -134,7 +225,7 @@ export default function AccountModal({
     setBusy(true)
     try {
       await subscriberLogout()
-      onAccountChange?.({ authenticated: false })
+      onAccountChange?.({ authenticated: false, clear_offline_access: true })
       setMode('login')
     } catch (err) {
       setError(err.message || 'Could not sign out.')
@@ -146,32 +237,36 @@ export default function AccountModal({
   const title = hasAccess
     ? isTrialing
       ? 'Free trial active'
-      : 'Offline unlocked'
+      : passStatus.formattedEnd
+        ? `Activated until ${passStatus.formattedEnd}`
+        : 'Offline unlocked'
     : loggedIn
-      ? trialAvailable
-        ? `Start ${TRIAL_DAYS}-day free trial`
-        : 'Subscribe to Offline Pass'
+      ? needsEmailVerify
+        ? 'Verify your email'
+        : trialAvailable
+          ? `Start ${TRIAL_DAYS}-day free trial`
+          : 'Subscribe to Offline Pass'
       : mode === 'register'
         ? 'Create your account'
         : 'Log in to continue'
 
   const lead = hasAccess
     ? isTrialing
-      ? `Trial ends ${trialEndLabel || 'in 2 days'}. Save the catalog now — subscribe para tuloy after.`
-      : 'Save the full song catalog on this device — searchable without Wi‑Fi.'
+      ? `${passStatus.statusText}. Save the catalog now — then pay via GCash for continuous access.`
+      : passStatus.formattedEnd
+        ? `Activated until ${passStatus.formattedEnd}. Save the full song catalog on this device — searchable without Wi‑Fi.`
+        : 'Save the full song catalog on this device — searchable without Wi‑Fi.'
     : loggedIn
-      ? trialAvailable
-        ? `Walang bayad for ${TRIAL_DAYS} days. One trial per account.`
-        : 'Trial used na — continue with checkout para ma-activate ang Offline Pass.'
+      ? needsEmailVerify
+        ? 'I-check ang inbox mo (and spam). Kailangan i-verify ang email bago ang paid checkout.'
+        : trialAvailable
+          ? `${TRIAL_DAYS}-day free trial — no card. After trial, pay via GCash and admin will activate.`
+          : 'Trial used na — bayad via GCash then ask admin to Activate your email.'
       : mode === 'register'
-        ? `Sign up to start your ${TRIAL_DAYS}-day free trial automatically.`
+        ? `Sign up and get a ${TRIAL_DAYS}-day free trial right away.`
         : 'Log in with your existing account.'
 
-  const statusLine = hasAccess
-    ? isTrialing
-      ? `Free trial · ends ${trialEndLabel || 'soon'}`
-      : 'Offline Pass active'
-    : 'No active subscription'
+  const statusLine = passStatus.statusText
 
   return (
     <div className="drawer-overlay install-app-overlay" onClick={onClose}>
@@ -210,6 +305,12 @@ export default function AccountModal({
         {error ? (
           <p className="account-modal-error" role="alert">
             {error}
+          </p>
+        ) : null}
+
+        {referralMsg ? (
+          <p className="account-modal-success" role="status">
+            {referralMsg}
           </p>
         ) : null}
 
@@ -283,20 +384,34 @@ export default function AccountModal({
             </label>
 
             {mode === 'register' ? (
-              <label className="account-field" htmlFor="account-confirm">
-                <span>Confirm password</span>
-                <input
-                  id="account-confirm"
-                  name="confirm_password"
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete="new-password"
-                  placeholder="Repeat password"
-                  value={confirm}
-                  onChange={(e) => setConfirm(e.target.value)}
-                  required
-                  minLength={8}
-                />
-              </label>
+              <>
+                <label className="account-field" htmlFor="account-confirm">
+                  <span>Confirm password</span>
+                  <input
+                    id="account-confirm"
+                    name="confirm_password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    placeholder="Repeat password"
+                    value={confirm}
+                    onChange={(e) => setConfirm(e.target.value)}
+                    required
+                    minLength={8}
+                  />
+                </label>
+
+                <label className="account-field" htmlFor="account-referral">
+                  <span>Referral Code (Optional)</span>
+                  <input
+                    id="account-referral"
+                    name="referral_code"
+                    type="text"
+                    placeholder="e.g. REF8A3F (+3 days trial)"
+                    value={referralInput}
+                    onChange={(e) => setReferralInput(e.target.value.toUpperCase())}
+                  />
+                </label>
+              </>
             ) : null}
 
             <button type="submit" className="account-primary-btn" disabled={busy}>
@@ -309,18 +424,78 @@ export default function AccountModal({
 
             <p className="account-modal-footnote">
               {mode === 'register'
-                ? `Free for ${TRIAL_DAYS} days, then ${PASS_LABEL}`
-                : `Then unlock Offline Pass · ${PASS_PRICE}${PASS_PERIOD}`}
+                ? `Free trial starts immediately · then ${PASS_LABEL} via GCash/admin`
+                : `Offline Pass · ${PASS_PRICE}${PASS_PERIOD} (manual activate)`}
             </p>
           </form>
         ) : (
           <div className="account-signed-in">
-            <div className={`account-status-chip ${hasAccess ? 'is-active' : 'is-locked'}`}>
+            <div className={`account-status-chip ${hasAccess ? (isTrialing ? 'is-trial' : 'is-active') : 'is-locked'}`}>
               <span className="account-status-dot" aria-hidden="true" />
               <div>
                 <strong>{account.email || account.username}</strong>
                 <p>{statusLine}</p>
               </div>
+            </div>
+
+            {/* Invite a Friend Referral Section */}
+            <div className="referral-card">
+              <div className="referral-card-header">
+                <span className="referral-card-badge">🎁 Invite & Earn</span>
+                <h3>Invite a friend (+3 days trial)</h3>
+                <p>Pareho kayong makakakuha ng +3 days trial extension kapag nag-join ang kaibigan mo!</p>
+              </div>
+
+              {myReferralCode ? (
+                <div className="referral-box">
+                  <div className="referral-code-display">
+                    <span>Your Code:</span>
+                    <strong>{myReferralCode}</strong>
+                  </div>
+                  <div className="referral-actions">
+                    <button
+                      type="button"
+                      className="referral-btn copy-btn"
+                      onClick={handleCopyReferralLink}
+                    >
+                      {copySuccess ? 'Copied link! ✓' : '📋 Copy Link'}
+                    </button>
+                    <button
+                      type="button"
+                      className="referral-btn share-btn"
+                      onClick={handleShareReferral}
+                    >
+                      📱 Share
+                    </button>
+                  </div>
+                  <div className="referral-stats">
+                    <span>👥 {sub.referral_count || 0} friends invited</span>
+                    <span>🎁 +{sub.referral_days_earned || 0} days earned</span>
+                  </div>
+                </div>
+              ) : null}
+
+              {!sub.referred_by ? (
+                <form className="referral-apply-form" onSubmit={handleApplyReferral}>
+                  <label htmlFor="enter-friend-code">Have a friend's code?</label>
+                  <div className="referral-input-group">
+                    <input
+                      id="enter-friend-code"
+                      type="text"
+                      placeholder="Enter Referral Code"
+                      value={referralInput}
+                      onChange={(e) => setReferralInput(e.target.value.toUpperCase())}
+                    />
+                    <button type="submit" className="referral-submit-btn" disabled={busy || !referralInput.trim()}>
+                      Apply
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <p className="referral-referred-by">
+                  ✓ Referred by <strong>{sub.referred_by}</strong> (+3 bonus days claimed)
+                </p>
+              )}
             </div>
 
             {hasAccess ? (
@@ -334,15 +509,23 @@ export default function AccountModal({
                   {syncingOffline ? 'Downloading…' : 'Save Offline Catalog'}
                 </button>
                 {isTrialing ? (
-                  <button
-                    type="button"
-                    className="account-ghost-btn"
-                    onClick={handleCheckout}
-                    disabled={busy}
-                  >
-                    {busy ? 'Redirecting…' : 'Subscribe now'}
-                  </button>
-                ) : (
+                  <>
+                    <p className="account-modal-footnote">
+                      Free trial — auto-expires after {TRIAL_DAYS} days (back to free plan).
+                    </p>
+                    {!showGCashPay ? (
+                      <button
+                        type="button"
+                        className="account-ghost-btn"
+                        onClick={() => setShowGCashPay(true)}
+                      >
+                        Subscribe now
+                      </button>
+                    ) : (
+                      <GCashPayPanel />
+                    )}
+                  </>
+                ) : stripeTrial ? (
                   <button
                     type="button"
                     className="account-ghost-btn"
@@ -351,7 +534,21 @@ export default function AccountModal({
                   >
                     Manage billing
                   </button>
-                )}
+                ) : null}
+              </>
+            ) : needsEmailVerify ? (
+              <>
+                <button
+                  type="button"
+                  className="account-primary-btn"
+                  onClick={handleResendVerify}
+                  disabled={busy}
+                >
+                  {busy ? 'Sending…' : 'Resend verification email'}
+                </button>
+                <p className="account-modal-footnote">
+                  Open the link in your email to continue.
+                </p>
               </>
             ) : (
               <>
@@ -360,8 +557,8 @@ export default function AccountModal({
                     <p className="account-plan-name">Offline Pass</p>
                     <p className="account-plan-desc">
                       {trialAvailable
-                        ? `${TRIAL_DAYS}-day free trial, then ${PASS_PRICE}${PASS_PERIOD}`
-                        : 'Offline catalog + unlimited favorites'}
+                        ? `${TRIAL_DAYS}-day free trial available`
+                        : `Activate for ${PASS_PRICE}${PASS_PERIOD} via GCash`}
                     </p>
                   </div>
                   <p className="account-plan-price">
@@ -379,17 +576,29 @@ export default function AccountModal({
                     {busy ? 'Starting…' : `Start ${TRIAL_DAYS}-day free trial`}
                   </button>
                 ) : null}
-                <button
-                  type="button"
-                  className={trialAvailable ? 'account-ghost-btn' : 'account-primary-btn'}
-                  onClick={handleCheckout}
-                  disabled={busy}
-                >
-                  {busy ? 'Redirecting…' : trialAvailable ? 'Skip · Subscribe now' : 'Continue to checkout'}
-                </button>
-                <p className="account-modal-footnote">
-                  Or pay via GCash and ask admin to activate your email.
-                </p>
+                {!showGCashPay ? (
+                  <button
+                    type="button"
+                    className={trialAvailable ? 'account-ghost-btn' : 'account-primary-btn'}
+                    onClick={() => setShowGCashPay(true)}
+                  >
+                    {trialAvailable
+                      ? 'Skip trial · Subscribe now'
+                      : 'Subscribe now'}
+                  </button>
+                ) : (
+                  <GCashPayPanel />
+                )}
+                {stripeTrial ? (
+                  <button
+                    type="button"
+                    className="account-ghost-btn"
+                    onClick={handleCheckout}
+                    disabled={busy}
+                  >
+                    {busy ? 'Redirecting…' : 'Stripe checkout'}
+                  </button>
+                ) : null}
               </>
             )}
 

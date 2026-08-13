@@ -6,12 +6,16 @@ from .auth_views import (
     AdminLoginView,
     AdminLogoutView,
     AdminMeView,
+    ApplyReferralView,
     CsrfView,
+    ResendVerificationEmailView,
     SubscriberLoginView,
     SubscriberRegisterView,
+    VerifyEmailView,
 )
 from .billing_views import (
     BillingAdminActivateView,
+    BillingAdminModerateView,
     BillingCheckoutView,
     BillingPortalView,
     BillingStartTrialView,
@@ -39,6 +43,17 @@ urlpatterns = [
         SubscriberLoginView.as_view(),
         name='auth-subscriber-login',
     ),
+    path('auth/verify-email/', VerifyEmailView.as_view(), name='auth-verify-email'),
+    path(
+        'auth/resend-verification/',
+        ResendVerificationEmailView.as_view(),
+        name='auth-resend-verification',
+    ),
+    path(
+        'subscribers/apply-referral/',
+        ApplyReferralView.as_view(),
+        name='subscribers-apply-referral',
+    ),
     path('billing/checkout/', BillingCheckoutView.as_view(), name='billing-checkout'),
     path('billing/start-trial/', BillingStartTrialView.as_view(), name='billing-start-trial'),
     path('billing/portal/', BillingPortalView.as_view(), name='billing-portal'),
@@ -47,6 +62,11 @@ urlpatterns = [
         'billing/admin-activate/',
         BillingAdminActivateView.as_view(),
         name='billing-admin-activate',
+    ),
+    path(
+        'billing/admin-moderate/',
+        BillingAdminModerateView.as_view(),
+        name='billing-admin-moderate',
     ),
     path(
         'billing/subscribers/',
