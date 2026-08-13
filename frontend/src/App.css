@@ -742,11 +742,15 @@
 }
 
 .mini-btn:hover {
-  background: var(--gold);
-  color: #120e0a;
-  border-color: transparent;
-  box-shadow: 0 3px 10px rgba(243, 194, 70, 0.35);
+  background: rgba(243, 194, 70, 0.22);
+  color: #fff;
+  border-color: rgba(243, 194, 70, 0.65);
+  box-shadow: 0 0 12px rgba(243, 194, 70, 0.28);
   transform: translateY(-1px);
+}
+
+.mini-btn:hover .btn-ico {
+  color: var(--gold);
 }
 
 .mini-btn.is-fav {
