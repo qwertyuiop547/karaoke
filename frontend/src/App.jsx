@@ -1490,7 +1490,13 @@ export default function App() {
               return (
                 <article key={song.id} className="songbook-row">
                   <div className="code-display">
-                    <span className="code-label">PLATINUM</span>
+                    <span className="code-label">
+                      <svg className="code-mic-icon" viewBox="0 0 24 24" width="10" height="10" fill="currentColor">
+                        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                        <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                      </svg>
+                      PLATINUM
+                    </span>
                     <span className="code-number">{song.platinum_number}</span>
                   </div>
 
@@ -1502,7 +1508,7 @@ export default function App() {
                     <div className="song-sub-row">
                       <span className="song-artist">{song.artist || 'Unknown artist'}</span>
                       <div className="song-tags">
-                        {song.language ? <span className="tag-lang">{song.language}</span> : null}
+                        {song.language ? <span className={`tag-lang ${(song.language || '').toLowerCase()}`}>{song.language}</span> : null}
                       </div>
                     </div>
                     <div className="row-actions">
@@ -1511,14 +1517,27 @@ export default function App() {
                         className={`mini-btn ${fav ? 'is-fav' : ''}`}
                         onClick={() => handleToggleFavorite(song)}
                       >
-                        {fav ? '★ Saved' : '☆ Save'}
+                        <svg className="btn-ico" viewBox="0 0 24 24" width="13" height="13" fill={fav ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
+                          <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                        </svg>
+                        <span>{fav ? 'Saved' : 'Save'}</span>
                       </button>
                       <button
                         type="button"
                         className={`mini-btn ${queued ? 'is-queued' : ''}`}
                         onClick={() => handleAddToQueue(song)}
                       >
-                        {queued ? '✓ Queued' : '+ Queue'}
+                        {queued ? (
+                          <svg className="btn-ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12"/>
+                          </svg>
+                        ) : (
+                          <svg className="btn-ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19"/>
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                          </svg>
+                        )}
+                        <span>{queued ? 'Queued' : 'Queue'}</span>
                       </button>
                       <button
                         type="button"
@@ -1529,7 +1548,11 @@ export default function App() {
                           setReportSuggested('')
                         }}
                       >
-                        Report
+                        <svg className="btn-ico" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+                          <line x1="4" y1="22" x2="4" y2="15"/>
+                        </svg>
+                        <span>Report</span>
                       </button>
                     </div>
                   </div>

@@ -607,12 +607,37 @@
 }
 
 .code-label {
+  display: inline-flex;
+  align-items: center;
   font-family: var(--font-number);
   font-size: 0.58rem;
   letter-spacing: 0.18em;
   color: rgba(243, 194, 70, 0.7);
   text-transform: uppercase;
   font-weight: 700;
+}
+
+.code-mic-icon {
+  margin-right: 0.25rem;
+  color: var(--gold);
+  opacity: 0.85;
+}
+
+.btn-ico {
+  flex-shrink: 0;
+  margin-right: 0.3rem;
+}
+
+.tag-lang.filipino {
+  background: rgba(243, 194, 70, 0.16);
+  border-color: rgba(243, 194, 70, 0.45);
+  color: var(--gold);
+}
+
+.tag-lang.english {
+  background: rgba(100, 180, 246, 0.14);
+  border-color: rgba(100, 180, 246, 0.4);
+  color: #7cc3f8;
 }
 
 .code-number {
