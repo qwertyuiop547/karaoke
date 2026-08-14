@@ -35,6 +35,8 @@ export default function GoogleAuthButton({
   useEffect(() => {
     if (!GOOGLE_CLIENT_ID) return
 
+    let resizeTimer = null
+
     const renderGoogleBtn = () => {
       if (!window.google?.accounts?.id || !containerRef.current) return
 
@@ -52,6 +54,10 @@ export default function GoogleAuthButton({
           cancel_on_tap_outside: true,
         })
 
+        // Measure container width for 100% mobile and desktop responsiveness
+        const measuredWidth = containerRef.current.clientWidth || 300
+        const computedWidth = Math.min(Math.max(Math.floor(measuredWidth), 200), 400)
+
         containerRef.current.innerHTML = ''
         window.google.accounts.id.renderButton(containerRef.current, {
           type: 'standard',
@@ -60,7 +66,7 @@ export default function GoogleAuthButton({
           text: text === 'Sign up with Google' ? 'signup_with' : 'continue_with',
           shape: 'rectangular',
           logo_alignment: 'left',
-          width: 380,
+          width: computedWidth,
         })
       } catch (err) {
         console.warn('Error rendering Google button:', err)
@@ -76,6 +82,28 @@ export default function GoogleAuthButton({
       script.defer = true
       script.onload = renderGoogleBtn
       document.head.appendChild(script)
+    }
+
+    // Auto-adapt to mobile orientation or viewport resize
+    const handleResize = () => {
+      window.clearTimeout(resizeTimer)
+      resizeTimer = window.setTimeout(renderGoogleBtn, 120)
+    }
+
+    window.addEventListener('resize', handleResize)
+
+    let observer = null
+    if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
+      observer = new ResizeObserver(() => {
+        handleResize()
+      })
+      observer.observe(containerRef.current)
+    }
+
+    return () => {
+      window.clearTimeout(resizeTimer)
+      window.removeEventListener('resize', handleResize)
+      if (observer) observer.disconnect()
     }
   }, [onSuccess, onError, referralCode, text])
 
