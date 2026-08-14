@@ -1,7 +1,7 @@
 /* Offline app shell + selective API cache */
 // Bump this when cache rules change so a previously cached protected response
 // is deleted during activation.
-const CACHE_VERSION = 'v6'
+const CACHE_VERSION = 'v7'
 const SHELL_CACHE = `platino-shell-${CACHE_VERSION}`
 const API_CACHE = `platino-api-${CACHE_VERSION}`
 const APP_SHELL = [
@@ -38,7 +38,23 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url)
 
-  // Network-first for safe *public* song reads only. The offline pack is a
+  // 1. Navigation / HTML requests: Network-first to always fetch latest app version
+  if (request.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone()
+            caches.open(SHELL_CACHE).then((cache) => cache.put(request, copy))
+          }
+          return response
+        })
+        .catch(() => caches.match('/index.html').then((cached) => cached || caches.match('/'))),
+    )
+    return
+  }
+
+  // 2. Network-first for safe *public* song reads only. The offline pack is a
   // protected entitlement endpoint, so it must never be stored in Cache
   // Storage or be available after a Pass expires.
   const isProtectedOfflinePack = url.pathname === '/api/songs/offline-pack/'
@@ -66,21 +82,18 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // Cache-first for same-origin assets (JS/CSS/fonts after first online visit)
+  // 3. Same-origin assets: Network-first with cache fallback for instant updates
   if (url.origin === self.location.origin) {
     event.respondWith(
-      caches.match(request).then((cached) => {
-        const fetched = fetch(request)
-          .then((response) => {
-            if (response.ok) {
-              const copy = response.clone()
-              caches.open(SHELL_CACHE).then((cache) => cache.put(request, copy))
-            }
-            return response
-          })
-          .catch(() => cached)
-        return cached || fetched
-      }),
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone()
+            caches.open(SHELL_CACHE).then((cache) => cache.put(request, copy))
+          }
+          return response
+        })
+        .catch(() => caches.match(request)),
     )
   }
 })
