@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import {
   applyReferralCode,
+  confirmPasswordReset,
   createBillingPortalSession,
   createCheckoutSession,
+  requestPasswordReset,
   resendVerificationEmail,
   startOfflineTrial,
   subscriberLogin,
@@ -12,6 +14,7 @@ import {
 import { getSavedReferralCode } from './joinUrl'
 import { PASS_LABEL, PASS_PERIOD, PASS_PRICE, TRIAL_DAYS, getPassStatusInfo } from './passBenefits'
 import GCashPayPanel from './GCashPayPanel'
+import GoogleAuthButton from './GoogleAuthButton'
 
 function formatTrialEnd(iso) {
   if (!iso) return ''
@@ -28,20 +31,26 @@ function formatTrialEnd(iso) {
 }
 
 /**
- * Sign up / log in / checkout — opened after Pass modal Get Pass / Log in.
+ * Sign up / log in / checkout / password reset — opened after Pass modal Get Pass / Log in.
  */
 export default function AccountModal({
   onClose,
   account,
   onAccountChange,
   initialMode = 'register',
+  initialResetToken = '',
   syncingOffline = false,
   onSaveOffline,
 }) {
   const [mode, setMode] = useState(() => {
     if (account?.authenticated) return 'subscribe'
-    return initialMode === 'login' ? 'login' : 'register'
+    if (initialResetToken) return 'reset'
+    if (initialMode === 'login') return 'login'
+    if (initialMode === 'forgot') return 'forgot'
+    if (initialMode === 'reset') return 'reset'
+    return 'register'
   })
+  const [resetToken, setResetToken] = useState(initialResetToken || '')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -234,6 +243,46 @@ export default function AccountModal({
     }
   }
 
+  const handleForgotPassword = async (e) => {
+    e.preventDefault()
+    setBusy(true)
+    setError('')
+    setReferralMsg('')
+    try {
+      const res = await requestPasswordReset(email)
+      setReferralMsg(res.message || 'Password reset link sent! Check your inbox and spam folder.')
+      if (res.reset_info?.reset_url) {
+        window.prompt('Password reset link (SMTP test link):', res.reset_info.reset_url)
+      }
+    } catch (err) {
+      setError(err.message || 'Could not request password reset.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault()
+    setBusy(true)
+    setError('')
+    try {
+      const next = await confirmPasswordReset({
+        token: resetToken,
+        newPassword: password,
+        confirmPassword: confirm,
+      })
+      onAccountChange?.(next)
+      setPassword('')
+      setConfirm('')
+      setResetToken('')
+      setMode('subscribe')
+    } catch (err) {
+      setError(err.message || 'Could not reset password.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const title = hasAccess
     ? isTrialing
       ? 'Free trial active'
@@ -248,7 +297,11 @@ export default function AccountModal({
           : 'Subscribe to Offline Pass'
       : mode === 'register'
         ? 'Create your account'
-        : 'Log in to continue'
+        : mode === 'forgot'
+          ? 'Reset your password'
+          : mode === 'reset'
+            ? 'Set new password'
+            : 'Log in to continue'
 
   const lead = hasAccess
     ? isTrialing
@@ -264,7 +317,21 @@ export default function AccountModal({
           : 'Trial used na — bayad via GCash then ask admin to Activate your email.'
       : mode === 'register'
         ? `Sign up and get a ${TRIAL_DAYS}-day free trial right away.`
-        : 'Log in with your existing account.'
+        : mode === 'forgot'
+          ? 'Ilagay ang iyong registered email para magpadala kami ng password reset link.'
+          : mode === 'reset'
+            ? 'Gumawa ng bagong secure password para sa iyong account (at least 8 characters).'
+            : 'Log in with your existing account.'
+
+  const kicker = hasAccess
+    ? (isTrialing ? 'Trial' : 'Active')
+    : loggedIn
+      ? 'Account'
+      : mode === 'forgot'
+        ? 'Recovery'
+        : mode === 'reset'
+          ? 'Security'
+          : 'Account'
 
   const statusLine = passStatus.statusText
 
@@ -295,9 +362,7 @@ export default function AccountModal({
         </button>
 
         <header className="account-modal-header account-modal-header--auth">
-          <p className="account-modal-kicker">
-            {hasAccess ? (isTrialing ? 'Trial' : 'Active') : loggedIn ? 'Account' : 'Account'}
-          </p>
+          <p className="account-modal-kicker">{kicker}</p>
           <h2 id="account-modal-title">{title}</h2>
           <p className="account-modal-lead">{lead}</p>
         </header>
@@ -315,119 +380,259 @@ export default function AccountModal({
         ) : null}
 
         {!loggedIn ? (
-          <form className="account-modal-form" onSubmit={handleAuth}>
-            <div className="account-mode-tabs" role="tablist" aria-label="Account mode">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mode === 'register'}
-                className={mode === 'register' ? 'active' : ''}
-                onClick={() => {
-                  setMode('register')
-                  setError('')
-                }}
-              >
-                Sign up
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mode === 'login'}
-                className={mode === 'login' ? 'active' : ''}
-                onClick={() => {
-                  setMode('login')
-                  setError('')
-                }}
-              >
-                Log in
-              </button>
-            </div>
-
-            <label className="account-field" htmlFor="account-email">
-              <span>Email</span>
-              <input
-                id="account-email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                placeholder="you@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </label>
-
-            <label className="account-field" htmlFor="account-password">
-              <span>Password</span>
-              <div className="account-password-row">
+          mode === 'forgot' ? (
+            <form className="account-modal-form" onSubmit={handleForgotPassword}>
+              <label className="account-field" htmlFor="account-forgot-email">
+                <span>Email address</span>
                 <input
-                  id="account-password"
-                  name="password"
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
-                  placeholder="At least 8 characters"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  id="account-forgot-email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   required
-                  minLength={8}
-                  enterKeyHint={mode === 'register' ? 'next' : 'done'}
                 />
+              </label>
+
+              <button type="submit" className="account-primary-btn" disabled={busy}>
+                {busy ? 'Sending link…' : 'Send Reset Link'}
+              </button>
+
+              <div className="account-form-footer-nav">
                 <button
                   type="button"
-                  className="account-toggle-pw"
-                  onClick={() => setShowPassword((v) => !v)}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="account-text-btn"
+                  onClick={() => {
+                    setMode('login')
+                    setError('')
+                    setReferralMsg('')
+                  }}
                 >
-                  {showPassword ? 'Hide' : 'Show'}
+                  ← Back to Log in
                 </button>
               </div>
-            </label>
+            </form>
+          ) : mode === 'reset' ? (
+            <form className="account-modal-form" onSubmit={handleResetPassword}>
+              <label className="account-field" htmlFor="account-reset-token">
+                <span>Reset token</span>
+                <input
+                  id="account-reset-token"
+                  name="reset_token"
+                  type="text"
+                  placeholder="Paste reset token if not in link"
+                  value={resetToken}
+                  onChange={(e) => setResetToken(e.target.value)}
+                  required
+                />
+              </label>
 
-            {mode === 'register' ? (
-              <>
-                <label className="account-field" htmlFor="account-confirm">
-                  <span>Confirm password</span>
+              <label className="account-field" htmlFor="account-new-password">
+                <span>New password</span>
+                <div className="account-password-row">
                   <input
-                    id="account-confirm"
-                    name="confirm_password"
+                    id="account-new-password"
+                    name="password"
                     type={showPassword ? 'text' : 'password'}
                     autoComplete="new-password"
-                    placeholder="Repeat password"
-                    value={confirm}
-                    onChange={(e) => setConfirm(e.target.value)}
+                    placeholder="At least 8 characters"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                     required
                     minLength={8}
                   />
-                </label>
+                  <button
+                    type="button"
+                    className="account-toggle-pw"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </label>
 
-                <label className="account-field" htmlFor="account-referral">
-                  <span>Referral Code (Optional)</span>
+              <label className="account-field" htmlFor="account-reset-confirm">
+                <span>Confirm new password</span>
+                <input
+                  id="account-reset-confirm"
+                  name="confirm_password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  placeholder="Repeat new password"
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                  required
+                  minLength={8}
+                />
+              </label>
+
+              <button type="submit" className="account-primary-btn" disabled={busy}>
+                {busy ? 'Saving new password…' : 'Save Password & Log In'}
+              </button>
+
+              <div className="account-form-footer-nav">
+                <button
+                  type="button"
+                  className="account-text-btn"
+                  onClick={() => {
+                    setMode('login')
+                    setError('')
+                    setReferralMsg('')
+                  }}
+                >
+                  ← Back to Log in
+                </button>
+              </div>
+            </form>
+          ) : (
+            <form className="account-modal-form" onSubmit={handleAuth}>
+              <div className="account-mode-tabs" role="tablist" aria-label="Account mode">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === 'register'}
+                  className={mode === 'register' ? 'active' : ''}
+                  onClick={() => {
+                    setMode('register')
+                    setError('')
+                  }}
+                >
+                  Sign up
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === 'login'}
+                  className={mode === 'login' ? 'active' : ''}
+                  onClick={() => {
+                    setMode('login')
+                    setError('')
+                  }}
+                >
+                  Log in
+                </button>
+              </div>
+
+              <GoogleAuthButton
+                referralCode={referralInput}
+                disabled={busy}
+                text={mode === 'register' ? 'Sign up with Google' : 'Continue with Google'}
+                onSuccess={(next) => {
+                  onAccountChange?.(next)
+                  setMode('subscribe')
+                }}
+                onError={(msg) => setError(msg)}
+              />
+
+              <div className="account-divider">
+                <span>or continue with email</span>
+              </div>
+
+              <label className="account-field" htmlFor="account-email">
+                <span>Email</span>
+                <input
+                  id="account-email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </label>
+
+              <label className="account-field" htmlFor="account-password">
+                <span>Password</span>
+                <div className="account-password-row">
                   <input
-                    id="account-referral"
-                    name="referral_code"
-                    type="text"
-                    placeholder="e.g. REF8A3F (+3 days trial)"
-                    value={referralInput}
-                    onChange={(e) => setReferralInput(e.target.value.toUpperCase())}
+                    id="account-password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+                    placeholder="At least 8 characters"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={8}
+                    enterKeyHint={mode === 'register' ? 'next' : 'done'}
                   />
-                </label>
-              </>
-            ) : null}
+                  <button
+                    type="button"
+                    className="account-toggle-pw"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </label>
 
-            <button type="submit" className="account-primary-btn" disabled={busy}>
-              {busy
-                ? 'Please wait…'
-                : mode === 'register'
-                  ? `Sign up · ${TRIAL_DAYS}-day trial`
-                  : 'Log in'}
-            </button>
+              {mode === 'login' ? (
+                <div className="account-forgot-row">
+                  <button
+                    type="button"
+                    className="account-forgot-btn"
+                    onClick={() => {
+                      setMode('forgot')
+                      setError('')
+                      setReferralMsg('')
+                    }}
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+              ) : null}
 
-            <p className="account-modal-footnote">
-              {mode === 'register'
-                ? `Free trial starts immediately · then ${PASS_LABEL} via GCash/admin`
-                : `Offline Pass · ${PASS_PRICE}${PASS_PERIOD} (manual activate)`}
-            </p>
-          </form>
+              {mode === 'register' ? (
+                <>
+                  <label className="account-field" htmlFor="account-confirm">
+                    <span>Confirm password</span>
+                    <input
+                      id="account-confirm"
+                      name="confirm_password"
+                      type={showPassword ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      placeholder="Repeat password"
+                      value={confirm}
+                      onChange={(e) => setConfirm(e.target.value)}
+                      required
+                      minLength={8}
+                    />
+                  </label>
+
+                  <label className="account-field" htmlFor="account-referral">
+                    <span>Referral Code (Optional)</span>
+                    <input
+                      id="account-referral"
+                      name="referral_code"
+                      type="text"
+                      placeholder="e.g. REF8A3F (+3 days trial)"
+                      value={referralInput}
+                      onChange={(e) => setReferralInput(e.target.value.toUpperCase())}
+                    />
+                  </label>
+                </>
+              ) : null}
+
+              <button type="submit" className="account-primary-btn" disabled={busy}>
+                {busy
+                  ? 'Please wait…'
+                  : mode === 'register'
+                    ? `Sign up · ${TRIAL_DAYS}-day trial`
+                    : 'Log in'}
+              </button>
+
+              <p className="account-modal-footnote">
+                {mode === 'register'
+                  ? `Free trial starts immediately · then ${PASS_LABEL} via GCash/admin`
+                  : `Offline Pass · ${PASS_PRICE}${PASS_PERIOD} (manual activate)`}
+              </p>
+            </form>
+          )
         ) : (
           <div className="account-signed-in">
             <div className={`account-status-chip ${hasAccess ? (isTrialing ? 'is-trial' : 'is-active') : 'is-locked'}`}>

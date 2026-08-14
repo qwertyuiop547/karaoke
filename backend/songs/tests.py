@@ -593,4 +593,211 @@ class ReferralCampaignTests(TestCase):
         self.assertIn('has expired', msg)
 
 
+class PasswordResetTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient(enforce_csrf_checks=False)
+        self.user = User.objects.create_user(
+            username='singer@karaoke.ph',
+            email='singer@karaoke.ph',
+            password='OldPassword123!',
+        )
+
+    def test_request_password_reset_valid_user(self):
+        with override_settings(EMAIL_INCLUDE_LINK_IN_API=True):
+            res = self.client.post(
+                '/api/auth/forgot-password/',
+                {'email': 'singer@karaoke.ph'},
+                format='json',
+            )
+            self.assertEqual(res.status_code, 200)
+            self.assertTrue(res.data['ok'])
+            self.assertIn('reset_info', res.data)
+            self.assertIn('token', res.data['reset_info'])
+
+    def test_request_password_reset_nonexistent_user(self):
+        res = self.client.post(
+            '/api/auth/forgot-password/',
+            {'email': 'nobody@karaoke.ph'},
+            format='json',
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.data['ok'])
+        self.assertNotIn('reset_info', res.data)
+
+    def test_request_password_reset_missing_email(self):
+        res = self.client.post(
+            '/api/auth/forgot-password/',
+            {'email': ''},
+            format='json',
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_confirm_password_reset_success(self):
+        from .password_reset import make_password_reset_token
+
+        token = make_password_reset_token(self.user)
+
+        res = self.client.post(
+            '/api/auth/reset-password/',
+            {
+                'token': token,
+                'new_password': 'BrandNewPassword123!',
+                'confirm_password': 'BrandNewPassword123!',
+            },
+            format='json',
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.data['ok'])
+        self.assertTrue(res.data['authenticated'])
+
+        # Verify old password no longer works
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.check_password('OldPassword123!'))
+        self.assertTrue(self.user.check_password('BrandNewPassword123!'))
+
+    def test_token_replay_rejected_after_password_change(self):
+        from .password_reset import make_password_reset_token
+
+        token = make_password_reset_token(self.user)
+
+        # First reset succeeds
+        res1 = self.client.post(
+            '/api/auth/reset-password/',
+            {
+                'token': token,
+                'new_password': 'BrandNewPassword123!',
+                'confirm_password': 'BrandNewPassword123!',
+            },
+            format='json',
+        )
+        self.assertEqual(res1.status_code, 200)
+
+        # Second reset with SAME token is rejected
+        res2 = self.client.post(
+            '/api/auth/reset-password/',
+            {
+                'token': token,
+                'new_password': 'AnotherPassword123!',
+                'confirm_password': 'AnotherPassword123!',
+            },
+            format='json',
+        )
+        self.assertEqual(res2.status_code, 400)
+        self.assertIn('already been used', res2.data['detail'])
+
+    def test_confirm_password_reset_mismatched_password(self):
+        from .password_reset import make_password_reset_token
+
+        token = make_password_reset_token(self.user)
+
+        res = self.client.post(
+            '/api/auth/reset-password/',
+            {
+                'token': token,
+                'new_password': 'BrandNewPassword123!',
+                'confirm_password': 'DifferentPassword123!',
+            },
+            format='json',
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('do not match', res.data['detail'])
+
+    def test_confirm_password_reset_invalid_token(self):
+        res = self.client.post(
+            '/api/auth/reset-password/',
+            {
+                'token': 'invalid.tampered.token',
+                'new_password': 'BrandNewPassword123!',
+                'confirm_password': 'BrandNewPassword123!',
+            },
+            format='json',
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('Invalid', res.data['detail'])
+
+
+class GoogleAuthTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient(enforce_csrf_checks=False)
+
+    def test_google_auth_new_user_creates_account_and_trial(self):
+        res = self.client.post(
+            '/api/auth/google/',
+            {
+                'credential': 'test-google-token:singwithgoogle@gmail.com:Singing Google User',
+                'device_id': 'test-device-12345',
+            },
+            format='json',
+        )
+        self.assertEqual(res.status_code, 201)
+        self.assertTrue(res.data['ok'])
+        self.assertTrue(res.data['is_new_user'])
+        self.assertTrue(res.data['authenticated'])
+        self.assertTrue(res.data['email_verified'])
+        self.assertEqual(res.data['email'], 'singwithgoogle@gmail.com')
+        self.assertTrue(res.data['offline_access'])
+        self.assertTrue(res.data['subscription']['is_trialing'])
+
+        user = User.objects.filter(email='singwithgoogle@gmail.com').first()
+        self.assertIsNotNone(user)
+        self.assertFalse(user.has_usable_password())
+
+    def test_google_auth_existing_user_signs_in(self):
+        existing_user = User.objects.create_user(
+            username='singer_existing@gmail.com',
+            email='singer_existing@gmail.com',
+            password='OriginalPassword123!',
+        )
+
+        res = self.client.post(
+            '/api/auth/google/',
+            {
+                'credential': 'test-google-token:singer_existing@gmail.com:Existing Singer',
+            },
+            format='json',
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.data['ok'])
+        self.assertFalse(res.data['is_new_user'])
+        self.assertTrue(res.data['authenticated'])
+        self.assertEqual(res.data['email'], 'singer_existing@gmail.com')
+
+    def test_google_auth_with_referral_code(self):
+        from .entitlements import ensure_subscriber_profile
+
+        referrer = User.objects.create_user(
+            username='referrer@gmail.com',
+            email='referrer@gmail.com',
+            password='Password123!',
+        )
+        ref_profile = ensure_subscriber_profile(referrer)
+        ref_code = ref_profile.referral_code
+
+        res = self.client.post(
+            '/api/auth/google/',
+            {
+                'credential': 'test-google-token:newreferred@gmail.com:Referred Google User',
+                'referral_code': ref_code,
+            },
+            format='json',
+        )
+        self.assertEqual(res.status_code, 201)
+        self.assertTrue(res.data['ok'])
+        self.assertTrue(res.data['is_new_user'])
+        self.assertIn('+3 days', res.data['message'])
+
+    def test_google_auth_missing_credential(self):
+        res = self.client.post(
+            '/api/auth/google/',
+            {'credential': ''},
+            format='json',
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('credential token is required', res.data['detail'])
+
+
+
+
 

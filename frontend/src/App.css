@@ -4549,6 +4549,64 @@
   box-shadow: inset 0 0 0 1px rgba(243, 194, 70, 0.28);
 }
 
+.google-auth-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #1f1f1f;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  font-family: var(--font-body);
+  font-size: 0.92rem;
+  font-weight: 650;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+  transition: background 0.15s ease, transform 0.15s ease, filter 0.15s ease;
+}
+
+.google-auth-btn:hover:not(:disabled) {
+  background: #f2f2f2;
+  transform: translateY(-1px);
+  filter: brightness(1.02);
+}
+
+.google-auth-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.google-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+}
+
+.account-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  margin: 0.15rem 0;
+}
+
+.account-divider::before,
+.account-divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid rgba(243, 194, 70, 0.16);
+}
+
+.account-divider span {
+  padding: 0 0.65rem;
+}
+
 .account-field {
   display: grid;
   gap: 0.35rem;
@@ -4687,6 +4745,35 @@
 
 .account-text-btn:hover:not(:disabled) {
   color: var(--text-secondary);
+}
+
+.account-forgot-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -0.2rem;
+}
+
+.account-forgot-btn {
+  border: none;
+  background: transparent;
+  color: var(--gold);
+  font-size: 0.82rem;
+  font-weight: 650;
+  cursor: pointer;
+  padding: 0.2rem 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.15s ease;
+}
+
+.account-forgot-btn:hover {
+  color: #fff3cf;
+}
+
+.account-form-footer-nav {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.35rem;
 }
 
 .account-modal-footnote {

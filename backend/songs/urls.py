@@ -8,7 +8,10 @@ from .auth_views import (
     AdminMeView,
     ApplyReferralView,
     CsrfView,
+    ForgotPasswordRequestView,
+    GoogleAuthView,
     ResendVerificationEmailView,
+    ResetPasswordConfirmView,
     SubscriberLoginView,
     SubscriberRegisterView,
     VerifyEmailView,
@@ -44,11 +47,41 @@ urlpatterns = [
         SubscriberLoginView.as_view(),
         name='auth-subscriber-login',
     ),
+    path(
+        'auth/google/',
+        GoogleAuthView.as_view(),
+        name='auth-google',
+    ),
+    path(
+        'auth/social/google/',
+        GoogleAuthView.as_view(),
+        name='auth-social-google',
+    ),
     path('auth/verify-email/', VerifyEmailView.as_view(), name='auth-verify-email'),
     path(
         'auth/resend-verification/',
         ResendVerificationEmailView.as_view(),
         name='auth-resend-verification',
+    ),
+    path(
+        'auth/forgot-password/',
+        ForgotPasswordRequestView.as_view(),
+        name='auth-forgot-password',
+    ),
+    path(
+        'auth/reset-password-request/',
+        ForgotPasswordRequestView.as_view(),
+        name='auth-reset-password-request',
+    ),
+    path(
+        'auth/reset-password/',
+        ResetPasswordConfirmView.as_view(),
+        name='auth-reset-password',
+    ),
+    path(
+        'auth/reset-password-confirm/',
+        ResetPasswordConfirmView.as_view(),
+        name='auth-reset-password-confirm',
     ),
     path(
         'subscribers/apply-referral/',

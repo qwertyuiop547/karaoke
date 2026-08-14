@@ -209,6 +209,8 @@ _default_frontend = (
     f'https://{_public_host}' if _public_host else 'http://localhost:5173'
 )
 FRONTEND_URL = os.getenv('FRONTEND_URL', _default_frontend).rstrip('/')
+GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '').strip()
+GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET', '').strip()
 STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY', '').strip()
 STRIPE_PUBLISHABLE_KEY = os.getenv('STRIPE_PUBLISHABLE_KEY', '').strip()
 STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET', '').strip()

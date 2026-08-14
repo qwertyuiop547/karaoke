@@ -214,6 +214,32 @@ export async function subscriberLogin(email, password) {
   return data
 }
 
+export async function googleAuthLogin({ credential, referralCode }) {
+  const headers = await csrfHeaders({
+    'Content-Type': 'application/json',
+    'X-Device-Id': getDeviceId(),
+  })
+  const response = await fetchWithWake(
+    `${API_BASE}/auth/google/`,
+    {
+      method: 'POST',
+      credentials: 'include',
+      headers,
+      body: JSON.stringify({
+        credential,
+        referral_code: referralCode,
+        device_id: getDeviceId(),
+      }),
+    },
+    { retries: 2 },
+  )
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data.detail || 'Google sign-in failed.')
+  }
+  return data
+}
+
 export async function subscriberLogout() {
   return adminLogout()
 }
@@ -284,6 +310,40 @@ export async function resendVerificationEmail() {
   const data = await response.json().catch(() => ({}))
   if (!response.ok) {
     throw new Error(data.detail || 'Could not resend verification email.')
+  }
+  return data
+}
+
+export async function requestPasswordReset(email) {
+  const headers = await csrfHeaders({ 'Content-Type': 'application/json' })
+  const response = await fetch(`${API_BASE}/auth/forgot-password/`, {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+    body: JSON.stringify({ email }),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data.detail || 'Could not send password reset email.')
+  }
+  return data
+}
+
+export async function confirmPasswordReset({ token, newPassword, confirmPassword }) {
+  const headers = await csrfHeaders({ 'Content-Type': 'application/json' })
+  const response = await fetch(`${API_BASE}/auth/reset-password/`, {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+    body: JSON.stringify({
+      token,
+      new_password: newPassword,
+      confirm_password: confirmPassword,
+    }),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data.detail || 'Could not reset password.')
   }
   return data
 }

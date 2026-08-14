@@ -4,5 +4,6 @@
   "extraPaths": [
     "backend",
     "backend/songs"
-  ]
+  ],
+  "reportMissingTypeStubs": "none"
 }

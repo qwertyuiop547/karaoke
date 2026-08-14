@@ -144,6 +144,7 @@ export default function App() {
   const [passNudgeCopy, setPassNudgeCopy] = useState(null)
   const [showAccount, setShowAccount] = useState(false)
   const [accountMode, setAccountMode] = useState('register')
+  const [resetToken, setResetToken] = useState('')
   const [account, setAccount] = useState({ authenticated: false })
   const { installed: appInstalled, ios, canPromptInstall, promptInstall } = usePwaInstall()
   const [showAdminLogin, setShowAdminLogin] = useState(() => {
@@ -335,7 +336,17 @@ export default function App() {
     const params = new URLSearchParams(window.location.search)
     const billing = params.get('billing')
     const verifyToken = params.get('verify_email')
-    if (verifyToken) {
+    const urlResetToken = params.get('reset_token') || params.get('reset_password')
+    if (urlResetToken) {
+      params.delete('reset_token')
+      params.delete('reset_password')
+      const next = `${window.location.pathname}${params.toString() ? `?${params}` : ''}${window.location.hash}`
+      window.history.replaceState(null, '', next)
+      setResetToken(urlResetToken)
+      setAccountMode('reset')
+      setShowAccount(true)
+      showToast('Enter your new password to reset your account.')
+    } else if (verifyToken) {
       params.delete('verify_email')
       const next = `${window.location.pathname}${params.toString() ? `?${params}` : ''}${window.location.hash}`
       window.history.replaceState(null, '', next)
@@ -2008,10 +2019,14 @@ export default function App() {
 
       {showAccount ? (
         <AccountModal
-          key={`account-${accountMode}-${account?.authenticated ? 'in' : 'out'}`}
-          onClose={() => setShowAccount(false)}
+          key={`account-${accountMode}-${resetToken ? 'reset' : ''}-${account?.authenticated ? 'in' : 'out'}`}
+          onClose={() => {
+            setShowAccount(false)
+            setResetToken('')
+          }}
           account={account}
           initialMode={accountMode}
+          initialResetToken={resetToken}
           onAccountChange={(next) => {
             applyAccountState(next?.authenticated ? next : { authenticated: false }, {
               forceLocalRevoke: Boolean(next?.clear_offline_access),
