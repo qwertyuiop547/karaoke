@@ -257,6 +257,9 @@ if USE_SQLITE:
 
     connection_created.connect(_sqlite_pragma)
 
+# Required for Google Identity Services / OAuth popups to communicate back to opener window
+SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin-allow-popups'
+
 # Harden cookies / TLS when not in DEBUG
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')

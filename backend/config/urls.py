@@ -15,7 +15,9 @@ def spa_index(_request):
     index = dist / 'index.html'
     if not index.is_file():
         raise Http404('Frontend build missing. Run the production Docker build.')
-    return FileResponse(index.open('rb'), content_type='text/html; charset=utf-8')
+    response = FileResponse(index.open('rb'), content_type='text/html; charset=utf-8')
+    response['Cross-Origin-Opener-Policy'] = 'same-origin-allow-popups'
+    return response
 
 
 def _frontend_file(name: str, content_type: str):
