@@ -4549,6 +4549,15 @@
   box-shadow: inset 0 0 0 1px rgba(243, 194, 70, 0.28);
 }
 
+.google-auth-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.google-gis-container {
+  display: none;
+}
+
 .google-auth-btn {
   display: flex;
   align-items: center;
