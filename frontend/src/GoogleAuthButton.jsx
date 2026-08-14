@@ -4,7 +4,7 @@ import { googleAuthLogin } from './api'
 const GOOGLE_CLIENT_ID =
   import.meta.env.VITE_GOOGLE_CLIENT_ID ||
   window.GOOGLE_CLIENT_ID ||
-  '1041809515809-on1uu7s1mevgu4ppnjpl7nrsk0opj94u.apps.googleusercontent.com'
+  '1041809515809-on1uu7s1mevgu4ppnjpi7nrsk0opj94u.apps.googleusercontent.com'
 
 export default function GoogleAuthButton({
   onSuccess,
