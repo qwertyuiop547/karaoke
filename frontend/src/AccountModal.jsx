@@ -97,7 +97,7 @@ export default function AccountModal({
       onAccountChange?.(next)
       setPassword('')
       setConfirm('')
-      setMode('subscribe')
+      onClose?.()
     } catch (err) {
       setError(err.message || 'Authentication failed.')
     } finally {
@@ -275,7 +275,7 @@ export default function AccountModal({
       setPassword('')
       setConfirm('')
       setResetToken('')
-      setMode('subscribe')
+      onClose?.()
     } catch (err) {
       setError(err.message || 'Could not reset password.')
     } finally {
@@ -522,7 +522,7 @@ export default function AccountModal({
                 text={mode === 'register' ? 'Sign up with Google' : 'Continue with Google'}
                 onSuccess={(next) => {
                   onAccountChange?.(next)
-                  setMode('subscribe')
+                  onClose?.()
                 }}
                 onError={(msg) => setError(msg)}
               />

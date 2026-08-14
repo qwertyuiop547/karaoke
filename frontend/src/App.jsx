@@ -2031,6 +2031,13 @@ export default function App() {
             applyAccountState(next?.authenticated ? next : { authenticated: false }, {
               forceLocalRevoke: Boolean(next?.clear_offline_access),
             })
+            if (next?.authenticated) {
+              showToast(
+                next?.message ||
+                  `Logged in as ${next?.email || next?.username || 'Singer'}! Free trial active.`,
+              )
+              setShowAccount(false)
+            }
             if (next?.offline_access) {
               adminMe().then((me) => {
                 if (me?.authenticated) applyAccountState(me, { announceExpiry: false })
