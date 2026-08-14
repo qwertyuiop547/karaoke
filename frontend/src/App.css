@@ -4549,13 +4549,33 @@
   box-shadow: inset 0 0 0 1px rgba(243, 194, 70, 0.28);
 }
 
-.google-auth-wrapper {
-  position: relative;
+.google-auth-container-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
   width: 100%;
+  margin: 0.15rem 0 0.35rem;
 }
 
-.google-gis-container {
-  display: none;
+.google-rendered-button {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+}
+
+.google-rendered-button > div,
+.google-rendered-button iframe {
+  width: 100% !important;
+  max-width: 100% !important;
+  border-radius: 10px !important;
+}
+
+.google-auth-loading {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 0.4rem;
 }
 
 .google-auth-btn {
