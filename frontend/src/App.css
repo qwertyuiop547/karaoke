@@ -4554,21 +4554,24 @@
   justify-content: center;
   align-items: center;
   width: 100%;
-  margin: 0.15rem 0 0.35rem;
+  margin: 0.35rem 0 0.5rem;
 }
 
 .google-rendered-button {
   display: flex;
   justify-content: center;
+  align-items: center;
   width: 100%;
   min-height: 44px;
+  margin: 0 auto;
 }
 
 .google-rendered-button > div,
 .google-rendered-button iframe {
-  width: 100% !important;
-  max-width: 100% !important;
-  border-radius: 10px !important;
+  margin: 0 auto !important;
+  display: block !important;
+  border-radius: 11px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
 .google-auth-loading {

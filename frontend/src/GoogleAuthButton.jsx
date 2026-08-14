@@ -60,7 +60,7 @@ export default function GoogleAuthButton({
           text: text === 'Sign up with Google' ? 'signup_with' : 'continue_with',
           shape: 'rectangular',
           logo_alignment: 'left',
-          width: 320,
+          width: 380,
         })
       } catch (err) {
         console.warn('Error rendering Google button:', err)
